@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学生能力画像系统</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", sans-serif; background: #f0f2f5; }
+    .header { background: #1a73e8; color: white; padding: 16px 32px; font-size: 20px; }
+    .container { display: flex; gap: 20px; padding: 20px; max-width: 1200px; margin: 0 auto; }
+    .sidebar { width: 280px; background: white; border-radius: 8px; padding: 16px; }
+    .sidebar h3 { margin-bottom: 12px; color: #333; }
+    .student-item { padding: 10px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 6px; }
+    .student-item:hover { background: #e8f0fe; }
+    .student-item.active { background: #1a73e8; color: white; }
+    .main { flex: 1; background: white; border-radius: 8px; padding: 24px; }
+    .info-row { display: flex; gap: 30px; margin-bottom: 20px; }
+    .info-item label { color: #666; font-size: 13px; }
+    .info-item p { font-size: 18px; font-weight: 500; color: #333; margin-top: 4px; }
+    #radar { width: 100%; height: 400px; }
+    .btn { background: #1a73e8; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .btn:hover { background: #1557b0; }
+    .score-cards { display: flex; gap: 16px; margin-bottom: 20px; }
+    .score-card { flex: 1; background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center; }
+    .score-card .label { font-size: 13px; color: #666; }
+    .score-card .value { font-size: 28px; font-weight: bold; color: #1a73e8; margin-top: 8px; }
+    .empty { text-align: center; color: #999; padding: 80px 0; }
+  </style>
+</head>
+<body>
+  <div class="header">高校学生成长与职业发展数据中台</div>
+  <div class="container">
+    <div class="sidebar">
+      <h3>学生列表</h3>
+      <div id="studentList"></div>
+    </div>
+    <div class="main" id="mainPanel">
+      <div class="empty">请选择左侧学生查看画像</div>
+    </div>
+  </div>
+
+  <script>
+    let currentStudent = null;
+
+    // 加载学生列表
+    async function loadStudents() {
+      try {
+        const res = await fetch('/api/students');
+        const data = await res.json();
+        const list = document.getElementById('studentList');
+        list.innerHTML = '';
+        data.data.forEach(s => {
+          const div = document.createElement('div');
+          div.className = 'student-item';
+          div.textContent = `${s.student_id}  ${s.name}`;
+          div.onclick = () => selectStudent(s.student_id, div);
+          list.appendChild(div);
+        });
+      } catch (e) {
+        document.getElementById('studentList').innerHTML = '<p style="color:red">加载失败</p>';
+      }
+    }
+
+    // 选中的元素默认高亮
+    function currentStudentElement() {
+      return Array.from(document.querySelectorAll('.student-item'))
+        .find(el => el.textContent.startsWith(currentStudent));
+    }
+
+    // 选中学生，加载画像
+    async function selectStudent(sid, el) {
+      currentStudent = sid;
+      document.querySelectorAll('.student-item').forEach(e => e.classList.remove('active'));
+      if (el) el.classList.add('active');
+
+      // 先查画像
+      const res = await fetch(`/api/portrait/${sid}`);
+      const data = await res.json();
+      
+      if (data.code === 404) {
+        document.getElementById('mainPanel').innerHTML = `
+          <div style="text-align:center;padding:60px 0">
+            <p style="color:#666;margin-bottom:20px">该学生还没有画像数据</p>
+            <button class="btn" onclick="calculate('${sid}')">立即计算画像</button>
+          </div>`;
+        return;
+      }
+      renderPortrait(data.data);
+    }
+
+    // 计算画像
+    async function calculate(sid) {
+      await fetch(`/api/portrait/calculate/${sid}`, { method: 'POST' });
+      selectStudent(sid, currentStudentElement());
+    }
+
+    // 渲染画像
+    function renderPortrait(p) {
+      document.getElementById('mainPanel').innerHTML = `
+        <h2 style="margin-bottom:20px">${p.name} 的能力画像</h2>
+        <div class="info-row">
+          <div class="info-item"><label>学号</label><p>${p.student_id}</p></div>
+          <div class="info-item"><label>学院</label><p>${p.college}</p></div>
+          <div class="info-item"><label>专业</label><p>${p.major}</p></div>
+          <div class="info-item"><label>GPA</label><p>${p.gpa}</p></div>
+        </div>
+        <div class="score-cards">
+          <div class="score-card"><div class="label">学业能力</div><div class="value">${p.academic_score}</div></div>
+          <div class="score-card"><div class="label">科研能力</div><div class="value">${p.research_score}</div></div>
+          <div class="score-card"><div class="label">实践能力</div><div class="value">${p.practice_score}</div></div>
+          <div class="score-card"><div class="label">综合总分</div><div class="value">${p.total_score}</div></div>
+        </div>
+        <div id="radar"></div>
+        <div style="margin-top:16px;text-align:center">
+          <button class="btn" onclick="calculate('${p.student_id}')">重新计算</button>
+        </div>
+      `;
+      // 重新初始化雷达图（因为DOM重建了）
+      const chart = echarts.init(document.getElementById('radar'));
+      chart.setOption({
+        title: { text: '能力雷达图', left: 'center' },
+        radar: {
+          indicator: [
+            { name: '学业成绩', max: 100 },
+            { name: '科研项目', max: 100 },
+            { name: '实践经历', max: 100 }
+          ]
+        },
+        series: [{
+          type: 'radar',
+          data: [{
+            value: [p.academic_score, p.research_score, p.practice_score],
+            name: '能力得分',
+            areaStyle: { color: 'rgba(26,115,232,0.3)' },
+            lineStyle: { color: '#1a73e8' }
+          }]
+        }]
+      });
+    }
+
+    loadStudents();
+  </script>
+</body>
+</html>

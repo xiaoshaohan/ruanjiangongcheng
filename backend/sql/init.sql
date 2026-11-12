@@ -56,13 +56,14 @@ CREATE TABLE IF NOT EXISTS practice_activity (
 CREATE TABLE IF NOT EXISTS ability_profile (
     id               INT AUTO_INCREMENT PRIMARY KEY,
     student_id       VARCHAR(20) NOT NULL COMMENT '学号',
-    gpa              DECIMAL(3,2) COMMENT '平均学分绩点',
+    gpa              DECIMAL(4,2) COMMENT '平均学分绩点',
     academic_score   DECIMAL(5,2) COMMENT '学业能力分',
     research_score   DECIMAL(5,2) COMMENT '科研能力分',
     practice_score   DECIMAL(5,2) COMMENT '实践能力分',
     total_score      DECIMAL(5,2) COMMENT '综合总分',
     update_time      DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES student(student_id)
+    FOREIGN KEY (student_id) REFERENCES student(student_id),
+    UNIQUE KEY uk_student_profile (student_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生画像表';
 
 -- 插入测试学生数据
