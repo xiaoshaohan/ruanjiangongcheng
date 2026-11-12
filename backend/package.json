@@ -1,0 +1,15 @@
+{
+  "name": "student-portrait-backend",
+  "version": "1.0.0",
+  "description": "高校学生成长与职业发展数据中台 - 后端",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mysql2": "^3.6.0",
+    "cors": "^2.8.5"
+  }
+}
