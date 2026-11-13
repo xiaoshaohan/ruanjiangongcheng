@@ -83,4 +83,41 @@ async function computePortrait(studentId, conn) {
   };
 }
 
-module.exports = { computePortrait };
+// 根据画像得分生成职业推荐
+function computeCareerRecommendation(portrait) {
+  const { academic_score, research_score, practice_score, gpa } = portrait;
+  const recommendations = [];
+
+  // 学术方向：学业强 + 科研强
+  if (academic_score >= 20 && research_score >= 8) {
+    recommendations.push({
+      direction: '学术研究方向',
+      reason: `学业成绩优秀(${academic_score}分)，科研经历丰富(${research_score}分)，适合考研深造、攻读硕士博士，从事科研院所或高校研究工作。`,
+      score: Math.round(academic_score * 0.5 + research_score * 0.5),
+    });
+  }
+
+  // 工程实践方向：实践分高
+  if (practice_score >= 20) {
+    recommendations.push({
+      direction: '工程实践方向',
+      reason: `实践经历丰富(${practice_score}分)，动手能力强，适合直接就业，从事软件开发、系统运维、技术支持等工程类岗位。`,
+      score: practice_score,
+    });
+  }
+
+  // 均衡发展方向
+  if (recommendations.length === 0) {
+    recommendations.push({
+      direction: '综合发展方向',
+      reason: `各方面发展均衡，建议根据个人兴趣选择考研或就业，目前可以通过参加竞赛、项目实践进一步明确方向。`,
+      score: Math.round(portrait.total_score),
+    });
+  }
+
+  // 按推荐度排序
+  recommendations.sort((a, b) => b.score - a.score);
+  return recommendations;
+}
+
+module.exports = { computePortrait, computeCareerRecommendation };

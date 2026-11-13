@@ -3,144 +3,913 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>学生能力画像系统</title>
+  <title>学生成长与职业发展数据中台</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: "Microsoft YaHei", sans-serif; background: #f0f2f5; }
-    .header { background: #1a73e8; color: white; padding: 16px 32px; font-size: 20px; }
-    .container { display: flex; gap: 20px; padding: 20px; max-width: 1200px; margin: 0 auto; }
-    .sidebar { width: 280px; background: white; border-radius: 8px; padding: 16px; }
-    .sidebar h3 { margin-bottom: 12px; color: #333; }
-    .student-item { padding: 10px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 6px; }
-    .student-item:hover { background: #e8f0fe; }
-    .student-item.active { background: #1a73e8; color: white; }
-    .main { flex: 1; background: white; border-radius: 8px; padding: 24px; }
-    .info-row { display: flex; gap: 30px; margin-bottom: 20px; }
-    .info-item label { color: #666; font-size: 13px; }
-    .info-item p { font-size: 18px; font-weight: 500; color: #333; margin-top: 4px; }
-    #radar { width: 100%; height: 400px; }
-    .btn { background: #1a73e8; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-    .btn:hover { background: #1557b0; }
-    .score-cards { display: flex; gap: 16px; margin-bottom: 20px; }
-    .score-card { flex: 1; background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center; }
-    .score-card .label { font-size: 13px; color: #666; }
-    .score-card .value { font-size: 28px; font-weight: bold; color: #1a73e8; margin-top: 8px; }
-    .empty { text-align: center; color: #999; padding: 80px 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #f5f7fa;
+      color: #262626;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ---------- 顶栏 ---------- */
+    .topbar {
+      background: linear-gradient(90deg, #1a73e8 0%, #1557b0 100%);
+      color: white;
+      padding: 0 28px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(21, 87, 176, 0.25);
+      position: relative;
+      z-index: 10;
+    }
+    .topbar .brand { display: flex; align-items: center; gap: 12px; }
+    .topbar .logo {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: rgba(255,255,255,0.22);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .topbar h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.3px; }
+    .topbar .user { font-size: 14px; display: flex; align-items: center; gap: 14px; }
+    .topbar .avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600;
+    }
+    .btn-logout {
+      background: rgba(255,255,255,0.16); color: white;
+      border: 1px solid rgba(255,255,255,0.32);
+      padding: 6px 14px; border-radius: 6px; font-size: 13px;
+      cursor: pointer; transition: all 0.2s; white-space: nowrap;
+    }
+    .btn-logout:hover { background: rgba(255,255,255,0.3); }
+
+    /* ---------- 布局 ---------- */
+    .layout { display: flex; min-height: calc(100vh - 60px); }
+
+    /* ---------- 侧边栏 ---------- */
+    .sidebar {
+      width: 216px; flex-shrink: 0;
+      background: #141e33;
+      padding: 16px 0;
+    }
+    .menu-item {
+      padding: 12px 20px;
+      color: rgba(255,255,255,0.62);
+      cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; gap: 10px;
+      transition: all 0.2s;
+      border-left: 3px solid transparent;
+      white-space: nowrap;
+    }
+    .menu-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.75; }
+    .menu-item:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .menu-item:hover svg { opacity: 1; }
+    .menu-item.active {
+      color: #fff;
+      background: rgba(26, 115, 232, 0.22);
+      border-left-color: #4a9eff;
+    }
+    .menu-item.active svg { opacity: 1; }
+
+    /* ---------- 主内容区 ---------- */
+    .main { flex: 1; padding: 24px 28px; overflow: auto; min-width: 0; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #eceff3;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 18px;
+      box-shadow: 0 2px 10px rgba(16, 34, 64, 0.04);
+      overflow-x: auto;
+    }
+    .card-title {
+      font-size: 16px; font-weight: 600; color: #1a2233;
+      margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-title::before {
+      content: ''; width: 3px; height: 15px;
+      background: linear-gradient(180deg, #1a73e8, #66a6ff);
+      border-radius: 2px;
+    }
+
+    /* ---------- 表格 ---------- */
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      font-size: 14px;
+      white-space: nowrap;
+      border-bottom: 1px solid #f2f4f7;
+    }
+    th { background: #f8fafc; font-weight: 600; color: #5a6b82; font-size: 13px; }
+    td { color: #3c4a5f; }
+    tbody tr { transition: background 0.15s; }
+    tbody tr:hover { background: #f7faff; }
+    tbody tr:last-child td { border-bottom: none; }
+
+    /* ---------- 按钮 ---------- */
+    .btn {
+      padding: 9px 18px;
+      border: none; border-radius: 7px;
+      cursor: pointer; font-size: 14px;
+      white-space: nowrap;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(180deg, #2b81f0, #1a73e8);
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
+    }
+    .btn-primary:hover { background: linear-gradient(180deg, #1a73e8, #1557b0); box-shadow: 0 4px 10px rgba(26,115,232,0.35); }
+    .btn-danger { background: #fff1f0; color: #e63946; border: 1px solid #ffd6d9; }
+    .btn-danger:hover { background: #ffe4e6; border-color: #ffb3ba; }
+    .btn-default { background: #fff; border: 1px solid #d8dfe8; color: #5a6b82; }
+    .btn-default:hover { border-color: #1a73e8; color: #1a73e8; background: #f7faff; }
+    /* 表格内的行内按钮更紧凑 */
+    td .btn { padding: 6px 14px; font-size: 13px; border-radius: 6px; }
+
+    /* ---------- 表单 ---------- */
+    .form-row { display: flex; gap: 16px; margin-bottom: 16px; align-items: center; }
+    .form-row label { width: 100px; font-size: 14px; color: #5a6b82; text-align: right; flex-shrink: 0; }
+    .form-row input, .form-row select {
+      flex: 1; min-width: 0;
+      padding: 9px 12px;
+      border: 1px solid #d8dfe8;
+      border-radius: 7px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: all 0.2s;
+      background: #fff;
+    }
+    .form-row input:focus, .form-row select:focus {
+      outline: none; border-color: #1a73e8;
+      box-shadow: 0 0 0 3px rgba(26,115,232,0.1);
+    }
+
+    /* ---------- 搜索栏 ---------- */
+    .search-bar { margin-bottom: 18px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .search-bar input {
+      width: 240px; flex-shrink: 0;
+      padding: 9px 13px;
+      border: 1px solid #d8dfe8;
+      border-radius: 7px;
+      font-size: 14px; font-family: inherit;
+      transition: all 0.2s;
+    }
+    .search-bar input:focus {
+      outline: none; border-color: #1a73e8;
+      box-shadow: 0 0 0 3px rgba(26,115,232,0.1);
+    }
+
+    /* ---------- 分数卡片 ---------- */
+    .score-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
+    .score-card {
+      background: linear-gradient(160deg, #f8fbff 0%, #f2f7ff 100%);
+      border: 1px solid #e8f0fe;
+      border-radius: 10px;
+      padding: 20px; text-align: center;
+    }
+    .score-card .label { font-size: 13px; color: #7c8ba3; margin-bottom: 8px; }
+    .score-card .value { font-size: 26px; font-weight: 700; color: #1a73e8; letter-spacing: -0.5px; }
+
+    #radar { width: 100%; height: 350px; }
+
+    /* ---------- 职业推荐 ---------- */
+    .rec-item {
+      padding: 16px 18px;
+      border-left: 3px solid #1a73e8;
+      background: #f8fbff;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+    .rec-item .title { font-weight: 600; color: #1a2233; margin-bottom: 7px; font-size: 14px; }
+    .rec-item .reason { font-size: 13px; color: #6b7c93; line-height: 1.7; }
+
+    /* ---------- 提示 ---------- */
+    .toast {
+      position: fixed; top: 78px; left: 50%; transform: translateX(-50%);
+      background: #1a2233; color: white;
+      padding: 11px 22px; border-radius: 8px;
+      font-size: 14px; z-index: 999;
+      opacity: 0; transition: opacity 0.3s, transform 0.3s;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(4px); }
+    .toast.success { background: #16a34a; }
+    .toast.error { background: #dc2626; }
+
+    .empty { text-align: center; color: #98a6b8; padding: 56px 0; font-size: 14px; }
+
+    /* ---------- 标签页 ---------- */
+    .tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid #eceff3; }
+    .tab {
+      padding: 11px 22px;
+      cursor: pointer; font-size: 14px; color: #6b7c93;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s; white-space: nowrap;
+    }
+    .tab:hover { color: #1a73e8; }
+    .tab.active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 500; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .record-title {
+      margin-top: 26px; padding-top: 18px;
+      border-top: 1px dashed #e4e9f0;
+      font-size: 14px; font-weight: 500; color: #5a6b82;
+      margin-bottom: 14px;
+    }
+
+    /* ---------- 统计卡片 ---------- */
+    .stat-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 18px; }
+    .stat-card {
+      background: #fff;
+      border: 1px solid #eceff3;
+      border-radius: 12px;
+      padding: 20px 22px;
+      box-shadow: 0 2px 10px rgba(16, 34, 64, 0.04);
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::after {
+      content: ''; position: absolute; left: 0; top: 0;
+      width: 100%; height: 3px;
+      background: linear-gradient(90deg, #1a73e8, #66a6ff);
+    }
+    .stat-card .label { font-size: 13px; color: #8b9aae; margin-bottom: 10px; letter-spacing: 0.2px; }
+    .stat-card .value { font-size: 27px; font-weight: 700; color: #1a73e8; letter-spacing: -0.8px; }
+
+    /* ---------- 独立下拉框 ---------- */
+    .field-select {
+      padding: 9px 12px;
+      border: 1px solid #d8dfe8;
+      border-radius: 7px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #fff;
+      min-width: 170px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .field-select:focus {
+      outline: none; border-color: #1a73e8;
+      box-shadow: 0 0 0 3px rgba(26,115,232,0.1);
+    }
+
+    /* ---------- 滚动条 ---------- */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #ccd6e0; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a9b8c9; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* ---------- 窄屏适配 ---------- */
+    @media (max-width: 1100px) {
+      .stat-cards { grid-template-columns: repeat(3, 1fr); }
+      .score-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 820px) {
+      .sidebar { width: 160px; }
+      .main { padding: 16px; }
+      .stat-cards { grid-template-columns: repeat(2, 1fr); }
+    }
   </style>
 </head>
 <body>
-  <div class="header">高校学生成长与职业发展数据中台</div>
-  <div class="container">
-    <div class="sidebar">
-      <h3>学生列表</h3>
-      <div id="studentList"></div>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+        <path d="M4 19V9M10 19V5M16 19v-7M22 19v-3"/>
+      </svg>
     </div>
-    <div class="main" id="mainPanel">
-      <div class="empty">请选择左侧学生查看画像</div>
+    <h1>高校学生成长与职业发展数据中台</h1>
+  </div>
+  <div class="user">
+    <div class="avatar" id="avatarLetter">A</div>
+    <span id="currentUser">管理员</span>
+    <button class="btn-logout" onclick="logout()">退出登录</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="menu-item" data-page="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M4 19V11M9 19V7M14 19v-5M19 19v-9"/>
+      </svg>
+      数据看板
+    </div>
+    <div class="menu-item active" data-page="students">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.6 3.1-5.5 7-5.5s7 1.9 7 5.5"/>
+      </svg>
+      学生管理
+    </div>
+    <div class="menu-item" data-page="entry">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M12 6v12M6 12h12"/>
+      </svg>
+      数据录入
+    </div>
+    <div class="menu-item" data-page="portrait">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/>
+      </svg>
+      画像分析
+    </div>
+    <div class="menu-item" data-page="compare">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M8 20V4M8 4l-3 3M8 4l3 3"/><path d="M16 4v16M16 20l-3-3M16 20l3-3"/>
+      </svg>
+      学生对比
     </div>
   </div>
 
-  <script>
-    let currentStudent = null;
+  <div class="main">
+    <!-- 数据看板页 -->
+    <div class="page" id="page-dashboard">
+      <div class="stat-cards" id="statCards"></div>
+      <div class="card">
+        <div class="card-title">综合总分分布</div>
+        <div id="distChart" style="width:100%;height:320px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">各维度平均分</div>
+        <div id="avgChart" style="width:100%;height:320px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">画像排行 TOP5</div>
+        <table>
+          <thead><tr><th>排名</th><th>学号</th><th>姓名</th><th>学业分</th><th>科研分</th><th>实践分</th><th>综合总分</th></tr></thead>
+          <tbody id="topTable"></tbody>
+        </table>
+      </div>
+    </div>
 
-    // 加载学生列表
-    async function loadStudents() {
-      try {
-        const res = await fetch('/api/students');
-        const data = await res.json();
-        const list = document.getElementById('studentList');
-        list.innerHTML = '';
-        data.data.forEach(s => {
-          const div = document.createElement('div');
-          div.className = 'student-item';
-          div.textContent = `${s.student_id}  ${s.name}`;
-          div.onclick = () => selectStudent(s.student_id, div);
-          list.appendChild(div);
-        });
-      } catch (e) {
-        document.getElementById('studentList').innerHTML = '<p style="color:red">加载失败</p>';
-      }
-    }
-
-    // 选中的元素默认高亮
-    function currentStudentElement() {
-      return Array.from(document.querySelectorAll('.student-item'))
-        .find(el => el.textContent.startsWith(currentStudent));
-    }
-
-    // 选中学生，加载画像
-    async function selectStudent(sid, el) {
-      currentStudent = sid;
-      document.querySelectorAll('.student-item').forEach(e => e.classList.remove('active'));
-      if (el) el.classList.add('active');
-
-      // 先查画像
-      const res = await fetch(`/api/portrait/${sid}`);
-      const data = await res.json();
-      
-      if (data.code === 404) {
-        document.getElementById('mainPanel').innerHTML = `
-          <div style="text-align:center;padding:60px 0">
-            <p style="color:#666;margin-bottom:20px">该学生还没有画像数据</p>
-            <button class="btn" onclick="calculate('${sid}')">立即计算画像</button>
-          </div>`;
-        return;
-      }
-      renderPortrait(data.data);
-    }
-
-    // 计算画像
-    async function calculate(sid) {
-      await fetch(`/api/portrait/calculate/${sid}`, { method: 'POST' });
-      selectStudent(sid, currentStudentElement());
-    }
-
-    // 渲染画像
-    function renderPortrait(p) {
-      document.getElementById('mainPanel').innerHTML = `
-        <h2 style="margin-bottom:20px">${p.name} 的能力画像</h2>
-        <div class="info-row">
-          <div class="info-item"><label>学号</label><p>${p.student_id}</p></div>
-          <div class="info-item"><label>学院</label><p>${p.college}</p></div>
-          <div class="info-item"><label>专业</label><p>${p.major}</p></div>
-          <div class="info-item"><label>GPA</label><p>${p.gpa}</p></div>
+    <!-- 学生管理页 -->
+    <div class="page active" id="page-students">
+      <div class="card">
+        <div class="card-title">学生列表</div>
+        <div class="search-bar">
+          <input type="text" id="searchInput" placeholder="搜索学号或姓名...">
+          <button class="btn btn-primary" onclick="openAddStudent()">添加学生</button>
+          <button class="btn btn-default" onclick="exportCsv('/api/export/students','学生列表')">导出学生CSV</button>
+          <button class="btn btn-default" onclick="exportCsv('/api/export/portraits','画像报告')">导出画像CSV</button>
         </div>
-        <div class="score-cards">
-          <div class="score-card"><div class="label">学业能力</div><div class="value">${p.academic_score}</div></div>
-          <div class="score-card"><div class="label">科研能力</div><div class="value">${p.research_score}</div></div>
-          <div class="score-card"><div class="label">实践能力</div><div class="value">${p.practice_score}</div></div>
-          <div class="score-card"><div class="label">综合总分</div><div class="value">${p.total_score}</div></div>
+        <table>
+          <thead><tr><th>学号</th><th>姓名</th><th>性别</th><th>学院</th><th>专业</th><th>年级</th><th>操作</th></tr></thead>
+          <tbody id="studentTable"></tbody>
+        </table>
+      </div>
+      <div class="card" id="addStudentForm" style="display:none">
+        <div class="card-title">添加新学生</div>
+        <div class="form-row"><label>学号：</label><input type="text" id="newSid" placeholder="如 2022003"></div>
+        <div class="form-row"><label>姓名：</label><input type="text" id="newName" placeholder="姓名"></div>
+        <div class="form-row"><label>性别：</label><select id="newGender"><option value="M">男</option><option value="F">女</option></select></div>
+        <div class="form-row"><label>学院：</label><input type="text" id="newCollege" value="计算机学院"></div>
+        <div class="form-row"><label>专业：</label><input type="text" id="newMajor" placeholder="专业"></div>
+        <div class="form-row"><label>年级：</label><input type="number" id="newGrade" value="2022"></div>
+        <div class="form-row"><label></label><div>
+          <button class="btn btn-primary" onclick="addStudent()">确认添加</button>
+          <button class="btn btn-default" onclick="document.getElementById('addStudentForm').style.display='none'">取消</button>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- 数据录入页 -->
+    <div class="page" id="page-entry">
+      <div class="card">
+        <div class="card-title">选择学生</div>
+        <select id="entryStudent" class="field-select" onchange="loadStudentRecords(this.value)">
+          <option value="">-- 请选择学生 --</option>
+        </select>
+        <span id="entrySummary" style="margin-left:16px;color:#666;font-size:13px"></span>
+      </div>
+      <div class="card">
+        <div class="tabs">
+          <div class="tab active" data-tab="academic">成绩录入</div>
+          <div class="tab" data-tab="research">科研录入</div>
+          <div class="tab" data-tab="practice">实践录入</div>
         </div>
-        <div id="radar"></div>
-        <div style="margin-top:16px;text-align:center">
-          <button class="btn" onclick="calculate('${p.student_id}')">重新计算</button>
+        <div class="tab-content active" id="tab-academic">
+          <div class="form-row"><label>课程名：</label><input type="text" id="acCourse" placeholder="如 高等数学"></div>
+          <div class="form-row"><label>学分：</label><input type="number" id="acCredit" placeholder="如 4" step="0.5"></div>
+          <div class="form-row"><label>成绩：</label><input type="number" id="acScore" placeholder="0-100"></div>
+          <div class="form-row"><label>学期：</label><input type="text" id="acSemester" placeholder="如 2023春"></div>
+          <div class="form-row"><label></label><button class="btn btn-primary" onclick="addAcademic()">提交成绩</button></div>
+          <div class="record-title">该学生已录入的成绩</div>
+          <div id="academicList"><div class="empty">请先选择学生</div></div>
         </div>
-      `;
-      // 重新初始化雷达图（因为DOM重建了）
-      const chart = echarts.init(document.getElementById('radar'));
-      chart.setOption({
-        title: { text: '能力雷达图', left: 'center' },
-        radar: {
-          indicator: [
-            { name: '学业成绩', max: 100 },
-            { name: '科研项目', max: 100 },
-            { name: '实践经历', max: 100 }
-          ]
-        },
-        series: [{
-          type: 'radar',
-          data: [{
-            value: [p.academic_score, p.research_score, p.practice_score],
-            name: '能力得分',
-            areaStyle: { color: 'rgba(26,115,232,0.3)' },
-            lineStyle: { color: '#1a73e8' }
+        <div class="tab-content" id="tab-research">
+          <div class="form-row"><label>项目名：</label><input type="text" id="rsName" placeholder="项目名称"></div>
+          <div class="form-row"><label>角色：</label><input type="text" id="rsRole" placeholder="如 负责人/成员"></div>
+          <div class="form-row"><label>级别：</label><select id="rsLevel"><option value="国家级">国家级</option><option value="省级">省级</option><option value="校级">校级</option></select></div>
+          <div class="form-row"><label>开始时间：</label><input type="date" id="rsStart"></div>
+          <div class="form-row"><label>结束时间：</label><input type="date" id="rsEnd"></div>
+          <div class="form-row"><label></label><button class="btn btn-primary" onclick="addResearch()">提交项目</button></div>
+          <div class="record-title">该学生已录入的科研项目</div>
+          <div id="researchList"><div class="empty">请先选择学生</div></div>
+        </div>
+        <div class="tab-content" id="tab-practice">
+          <div class="form-row"><label>活动名：</label><input type="text" id="prName" placeholder="活动名称"></div>
+          <div class="form-row"><label>类型：</label><input type="text" id="prType" placeholder="如 实习/竞赛/志愿"></div>
+          <div class="form-row"><label>时长(小时)：</label><input type="number" id="prHours" placeholder="如 40"></div>
+          <div class="form-row"><label>描述：</label><input type="text" id="prDesc" placeholder="简单描述"></div>
+          <div class="form-row"><label></label><button class="btn btn-primary" onclick="addPractice()">提交实践</button></div>
+          <div class="record-title">该学生已录入的实践经历</div>
+          <div id="practiceList"><div class="empty">请先选择学生</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 画像分析页 -->
+    <div class="page" id="page-portrait">
+      <div class="card">
+        <div class="card-title">选择学生</div>
+        <select id="portraitStudent" class="field-select" onchange="loadPortrait()">
+          <option value="">-- 请选择学生 --</option>
+        </select>
+        <button class="btn btn-primary" onclick="calculatePortrait()" style="margin-left:12px">重新计算画像</button>
+      </div>
+      <div id="portraitResult"><div class="empty">请选择学生查看画像分析</div></div>
+    </div>
+
+    <!-- 学生对比页 -->
+    <div class="page" id="page-compare">
+      <div class="card">
+        <div class="card-title">选择两名学生对比</div>
+        <div class="form-row">
+          <label>学生A：</label>
+          <select id="compareA" class="field-select"><option value="">-- 请选择 --</option></select>
+          <label>学生B：</label>
+          <select id="compareB" class="field-select"><option value="">-- 请选择 --</option></select>
+          <button class="btn btn-primary" onclick="doCompare()">开始对比</button>
+        </div>
+      </div>
+      <div id="compareResult"><div class="empty">请选择两名学生进行对比</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let students = [];
+
+// ========== 登录态 ==========
+function getToken() {
+  return localStorage.getItem('token') || '';
+}
+
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('username');
+  location.replace('/login.html');
+}
+
+// 未登录直接跳登录页
+if (!getToken()) {
+  logout();
+}
+
+const loginName = localStorage.getItem('username') || '管理员';
+document.getElementById('currentUser').textContent = loginName;
+document.getElementById('avatarLetter').textContent = loginName.charAt(0).toUpperCase();
+
+function toast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+async function api(url, method = 'GET', data = null) {
+  const opts = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + getToken(),
+    },
+  };
+  if (data) opts.body = JSON.stringify(data);
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    logout();
+    throw new Error('登录已过期');
+  }
+  return res.json();
+}
+
+document.querySelectorAll('.menu-item').forEach(item => {
+  item.onclick = () => {
+    document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + item.dataset.page).classList.add('active');
+    if (item.dataset.page === 'dashboard') loadDashboard();
+  };
+});
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  };
+});
+
+async function loadStudents(filter = '') {
+  const data = await api('/api/students');
+  students = data.data;
+  const tbody = document.getElementById('studentTable');
+  tbody.innerHTML = '';
+  students.filter(s => !filter || s.name.includes(filter) || s.student_id.includes(filter)).forEach(s => {
+    tbody.innerHTML += `<tr>
+      <td>${s.student_id}</td><td>${s.name}</td><td>${s.gender === 'M' ? '男' : '女'}</td>
+      <td>${s.college}</td><td>${s.major}</td><td>${s.grade}</td>
+      <td><button class="btn btn-danger" onclick="delStudent('${s.student_id}')">删除</button></td>
+    </tr>`;
+  });
+  ['entryStudent', 'portraitStudent', 'compareA', 'compareB'].forEach(id => {
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- 请选择学生 --</option>' +
+      students.map(s => `<option value="${s.student_id}">${s.student_id} ${s.name}</option>`).join('');
+    sel.value = cur;
+  });
+}
+
+function openAddStudent() { document.getElementById('addStudentForm').style.display = 'block'; }
+
+async function addStudent() {
+  const data = {
+    student_id: document.getElementById('newSid').value,
+    name: document.getElementById('newName').value,
+    gender: document.getElementById('newGender').value,
+    college: document.getElementById('newCollege').value,
+    major: document.getElementById('newMajor').value,
+    grade: document.getElementById('newGrade').value,
+  };
+  const res = await api('/api/students', 'POST', data);
+  if (res.code === 200) { toast('学生添加成功'); document.getElementById('addStudentForm').style.display = 'none'; loadStudents(); }
+  else toast(res.message, 'error');
+}
+
+async function delStudent(sid) {
+  if (!confirm('确认删除该学生？相关数据也会被删除')) return;
+  await api('/api/students/' + sid, 'DELETE');
+  toast('删除成功'); loadStudents();
+}
+
+// ========== 数据录入 ==========
+// 加载所选学生的已有记录，录入后也能立刻看到
+async function loadStudentRecords(sid) {
+  const summary = document.getElementById('entrySummary');
+
+  if (!sid) {
+    ['academicList', 'researchList', 'practiceList'].forEach((id) => {
+      document.getElementById(id).innerHTML = '<div class="empty">请先选择学生</div>';
+    });
+    summary.textContent = '';
+    return;
+  }
+
+  const [ac, rs, pr] = await Promise.all([
+    api('/api/academic/' + sid),
+    api('/api/research/' + sid),
+    api('/api/practice/' + sid),
+  ]);
+
+  const acRows = (ac && ac.data) || [];
+  const rsRows = (rs && rs.data) || [];
+  const prRows = (pr && pr.data) || [];
+
+  // 成绩表
+  document.getElementById('academicList').innerHTML = acRows.length
+    ? `<table><thead><tr><th>课程</th><th>学分</th><th>成绩</th><th>学期</th></tr></thead><tbody>
+        ${acRows.map((r) => `<tr><td>${r.course_name}</td><td>${Number(r.credit)}</td><td>${Number(r.score)}</td><td>${r.semester || '-'}</td></tr>`).join('')}
+       </tbody></table>`
+    : '<div class="empty">暂无成绩记录</div>';
+
+  // 科研表
+  document.getElementById('researchList').innerHTML = rsRows.length
+    ? `<table><thead><tr><th>项目名称</th><th>角色</th><th>级别</th><th>起止时间</th></tr></thead><tbody>
+        ${rsRows.map((r) => `<tr><td>${r.project_name}</td><td>${r.role || '-'}</td><td>${r.level || '-'}</td>
+          <td>${(r.start_date || '').toString().slice(0, 10)} ~ ${(r.end_date || '').toString().slice(0, 10)}</td></tr>`).join('')}
+       </tbody></table>`
+    : '<div class="empty">暂无科研项目</div>';
+
+  // 实践表
+  document.getElementById('practiceList').innerHTML = prRows.length
+    ? `<table><thead><tr><th>活动名称</th><th>类型</th><th>时长(小时)</th><th>描述</th></tr></thead><tbody>
+        ${prRows.map((r) => `<tr><td>${r.activity_name}</td><td>${r.type || '-'}</td><td>${r.hours || 0}</td><td>${r.description || '-'}</td></tr>`).join('')}
+       </tbody></table>`
+    : '<div class="empty">暂无实践经历</div>';
+
+  summary.textContent = `已有：成绩 ${acRows.length} 条 · 科研 ${rsRows.length} 项 · 实践 ${prRows.length} 项`;
+}
+
+async function addAcademic() {
+  const sid = document.getElementById('entryStudent').value;
+  if (!sid) return toast('请先选择学生', 'error');
+  const data = {
+    student_id: sid,
+    course_name: document.getElementById('acCourse').value,
+    credit: document.getElementById('acCredit').value,
+    score: document.getElementById('acScore').value,
+    semester: document.getElementById('acSemester').value,
+  };
+  const res = await api('/api/academic', 'POST', data);
+  if (res.code === 200) {
+    toast('成绩录入成功');
+    document.getElementById('acCourse').value = '';
+    document.getElementById('acCredit').value = '';
+    document.getElementById('acScore').value = '';
+    loadStudentRecords(sid);
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function addResearch() {
+  const sid = document.getElementById('entryStudent').value;
+  if (!sid) return toast('请先选择学生', 'error');
+  const data = {
+    student_id: sid,
+    project_name: document.getElementById('rsName').value,
+    role: document.getElementById('rsRole').value,
+    level: document.getElementById('rsLevel').value,
+    start_date: document.getElementById('rsStart').value,
+    end_date: document.getElementById('rsEnd').value,
+  };
+  const res = await api('/api/research', 'POST', data);
+  if (res.code === 200) {
+    toast('科研项目录入成功');
+    document.getElementById('rsName').value = '';
+    document.getElementById('rsRole').value = '';
+    loadStudentRecords(sid);
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function addPractice() {
+  const sid = document.getElementById('entryStudent').value;
+  if (!sid) return toast('请先选择学生', 'error');
+  const data = {
+    student_id: sid,
+    activity_name: document.getElementById('prName').value,
+    type: document.getElementById('prType').value,
+    hours: document.getElementById('prHours').value,
+    description: document.getElementById('prDesc').value,
+  };
+  const res = await api('/api/practice', 'POST', data);
+  if (res.code === 200) {
+    toast('实践经历录入成功');
+    document.getElementById('prName').value = '';
+    document.getElementById('prType').value = '';
+    document.getElementById('prHours').value = '';
+    document.getElementById('prDesc').value = '';
+    loadStudentRecords(sid);
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function calculatePortrait() {
+  const sid = document.getElementById('portraitStudent').value;
+  if (!sid) return toast('请先选择学生', 'error');
+  await api('/api/portrait/calculate/' + sid, 'POST');
+  toast('画像计算完成'); loadPortrait();
+}
+
+async function loadPortrait() {
+  const sid = document.getElementById('portraitStudent').value;
+  if (!sid) return;
+  const res = await api('/api/portrait/' + sid);
+  const box = document.getElementById('portraitResult');
+  if (res.code === 404) { box.innerHTML = '<div class="empty">该学生暂无画像数据，点击"重新计算画像"按钮生成</div>'; return; }
+  const p = res.data;
+  box.innerHTML = `
+    <div class="card">
+      <div class="card-title">${p.name} - 能力画像</div>
+      <div class="score-cards">
+        <div class="score-card"><div class="label">GPA</div><div class="value">${p.gpa}</div></div>
+        <div class="score-card"><div class="label">学业能力</div><div class="value">${p.academic_score}</div></div>
+        <div class="score-card"><div class="label">科研能力</div><div class="value">${p.research_score}</div></div>
+        <div class="score-card"><div class="label">实践能力</div><div class="value">${p.practice_score}</div></div>
+      </div>
+      <div id="radar"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">职业发展推荐</div>
+      <div id="careerRec"></div>
+    </div>`;
+  const chart = makeChart('radar');
+  if (chart) chart.setOption({
+    radar: { indicator: [{ name: '学业成绩', max: 100 }, { name: '科研项目', max: 100 }, { name: '实践经历', max: 100 }] },
+    series: [{ type: 'radar', data: [{ value: [p.academic_score, p.research_score, p.practice_score], name: '能力得分', areaStyle: { color: 'rgba(26,115,232,0.3)' }, lineStyle: { color: '#1a73e8' } }] }]
+  });
+  const recRes = await api('/api/portrait/career/' + sid);
+  document.getElementById('careerRec').innerHTML = recRes.data.map(r => `
+    <div class="rec-item"><div class="title">${r.direction}（推荐度：${r.score}分）</div><div class="reason">${r.reason}</div></div>`).join('');
+}
+
+document.getElementById('searchInput').oninput = (e) => loadStudents(e.target.value);
+
+// 图表工具：CDN 未加载时给出提示而不是让整个脚本崩掉
+function makeChart(elOrId) {
+  if (typeof echarts === 'undefined') {
+    const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+    if (el) el.innerHTML = '<div class="empty">图表组件加载失败，请检查网络后刷新页面</div>';
+    return null;
+  }
+  const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+  const chart = echarts.init(el);
+  // 容器尺寸在页面切换后可能变化，延迟校正一次
+  setTimeout(() => chart.resize(), 100);
+  window.addEventListener('resize', () => chart.resize());
+  return chart;
+}
+
+// ========== 数据看板 ==========
+async function loadDashboard() {
+  const res = await api('/api/stats');
+  if (res.code !== 200) return toast('统计数据加载失败', 'error');
+  const d = res.data;
+
+  // 统计卡片
+  document.getElementById('statCards').innerHTML = `
+    <div class="stat-card"><div class="label">学生总数</div><div class="value">${d.overview.student_total}</div></div>
+    <div class="stat-card"><div class="label">已计算画像</div><div class="value">${d.overview.profile_total}</div></div>
+    <div class="stat-card"><div class="label">成绩记录</div><div class="value">${d.overview.academic_records}</div></div>
+    <div class="stat-card"><div class="label">科研项目</div><div class="value">${d.overview.research_projects}</div></div>
+    <div class="stat-card"><div class="label">实践活动</div><div class="value">${d.overview.practice_activities}</div></div>`;
+
+  // 总分分布饼图
+  const sd = d.score_distribution;
+  const pieData = [
+    { name: '0-5分', value: Number(sd.range_0_5) || 0 },
+    { name: '5-10分', value: Number(sd.range_5_10) || 0 },
+    { name: '10-15分', value: Number(sd.range_10_15) || 0 },
+    { name: '15分以上', value: Number(sd.range_15_plus) || 0 },
+  ];
+  const hasPieData = pieData.some(x => x.value > 0);
+  const distEl = document.getElementById('distChart');
+  if (distEl) {
+    if (hasPieData) {
+      const dist = makeChart(distEl);
+      if (dist) {
+        dist.setOption({
+          tooltip: { trigger: 'item', formatter: '{b}: {c}人 ({d}%)' },
+          legend: { bottom: 0 },
+          series: [{
+            type: 'pie',
+            radius: ['40%', '65%'],
+            center: ['50%', '45%'],
+            label: { formatter: '{b}: {c}人' },
+            data: pieData
           }]
+        });
+      }
+    } else {
+      distEl.innerHTML = '<div class="empty">暂无画像数据，请先计算学生画像</div>';
+    }
+  }
+
+  // 各维度平均分柱图
+  const a = d.averages;
+  const avgEl = document.getElementById('avgChart');
+  if (avgEl) {
+    const avg = makeChart(avgEl);
+    if (avg) {
+      avg.setOption({
+        tooltip: { trigger: 'axis' },
+        grid: { left: 60, right: 30, top: 40, bottom: 40 },
+        xAxis: { type: 'category', data: ['学业分', '科研分', '实践分'] },
+        yAxis: { type: 'value', name: '平均分' },
+        series: [{
+          type: 'bar',
+          barWidth: 60,
+          itemStyle: { color: '#1a73e8', borderRadius: [6, 6, 0, 0] },
+          label: { show: true, position: 'top' },
+          data: [
+            Number(a.avg_academic) || 0,
+            Number(a.avg_research) || 0,
+            Number(a.avg_practice) || 0
+          ]
         }]
       });
     }
+  }
 
-    loadStudents();
-  </script>
+  // TOP5 排行
+  document.getElementById('topTable').innerHTML = d.top_students.length
+    ? d.top_students.map((s, i) => `<tr>
+        <td>${i + 1}</td><td>${s.student_id}</td><td>${s.name}</td>
+        <td>${s.academic_score}</td><td>${s.research_score}</td><td>${s.practice_score}</td>
+        <td><strong>${s.total_score}</strong></td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" style="text-align:center;color:#999">暂无画像数据</td></tr>';
+}
+
+// ========== 学生对比 ==========
+async function doCompare() {
+  const a = document.getElementById('compareA').value;
+  const b = document.getElementById('compareB').value;
+  if (!a || !b) return toast('请选择两名学生', 'error');
+  if (a === b) return toast('请选择不同的两名学生', 'error');
+
+  const [ra, rb] = await Promise.all([api('/api/portrait/' + a), api('/api/portrait/' + b)]);
+
+  const box = document.getElementById('compareResult');
+  if (ra.code === 404 || rb.code === 404) {
+    box.innerHTML = '<div class="empty">其中一名学生还没有画像数据，请先在"画像分析"中计算</div>';
+    return;
+  }
+
+  const pa = ra.data, pb = rb.data;
+  box.innerHTML = `
+    <div class="card">
+      <div class="card-title">${pa.name} vs ${pb.name}</div>
+      <div id="compareRadar" style="width:100%;height:400px"></div>
+      <table style="margin-top:16px">
+        <thead><tr><th>维度</th><th>${pa.name}</th><th>${pb.name}</th><th>差值</th></tr></thead>
+        <tbody>
+          <tr><td>GPA</td><td>${pa.gpa}</td><td>${pb.gpa}</td><td>${diff(pa.gpa, pb.gpa)}</td></tr>
+          <tr><td>学业分</td><td>${pa.academic_score}</td><td>${pb.academic_score}</td><td>${diff(pa.academic_score, pb.academic_score)}</td></tr>
+          <tr><td>科研分</td><td>${pa.research_score}</td><td>${pb.research_score}</td><td>${diff(pa.research_score, pb.research_score)}</td></tr>
+          <tr><td>实践分</td><td>${pa.practice_score}</td><td>${pb.practice_score}</td><td>${diff(pa.practice_score, pb.practice_score)}</td></tr>
+          <tr><td><strong>综合总分</strong></td><td><strong>${pa.total_score}</strong></td><td><strong>${pb.total_score}</strong></td><td>${diff(pa.total_score, pb.total_score)}</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+
+  const chart = makeChart('compareRadar');
+  if (chart) chart.setOption({
+    legend: { data: [pa.name, pb.name], bottom: 0 },
+    radar: {
+      indicator: [
+        { name: '学业成绩', max: 100 },
+        { name: '科研项目', max: 100 },
+        { name: '实践经历', max: 100 }
+      ]
+    },
+    series: [{
+      type: 'radar',
+      data: [
+        { value: [pa.academic_score, pa.research_score, pa.practice_score], name: pa.name,
+          areaStyle: { color: 'rgba(26,115,232,0.2)' }, lineStyle: { color: '#1a73e8' }, itemStyle: { color: '#1a73e8' } },
+        { value: [pb.academic_score, pb.research_score, pb.practice_score], name: pb.name,
+          areaStyle: { color: 'rgba(82,196,26,0.2)' }, lineStyle: { color: '#52c41a' }, itemStyle: { color: '#52c41a' } }
+      ]
+    }]
+  });
+}
+
+function diff(x, y) {
+  const d = (Number(x) || 0) - (Number(y) || 0);
+  if (d === 0) return '持平';
+  return d > 0 ? `+${d.toFixed(2)}` : d.toFixed(2);
+}
+
+// ========== 导出 ==========
+// 需要带鉴权头，所以用 fetch 拿 blob 再触发下载，不能直接用 location.href
+async function exportCsv(url, name) {
+  try {
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + getToken() } });
+    if (res.status === 401) return logout();
+    if (!res.ok) return toast('导出失败', 'error');
+
+    const blob = await res.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name + '.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    toast(`已导出${name}`);
+  } catch (e) {
+    toast('导出失败', 'error');
+  }
+}
+
+loadStudents();
+</script>
 </body>
 </html>

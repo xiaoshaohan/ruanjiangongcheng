@@ -1,26 +1,22 @@
 const express = require('express');
 const pool = require('../config/db');
-const { ok, fail, asyncHandler } = require('../utils/response');
+const { ok, asyncHandler } = require('../utils/response');
+const { validate } = require('../utils/validate');
 
 const router = express.Router();
 
 // 录入学业成绩
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', validate({
+  student_id: { required: true, label: '学号', type: 'string' },
+  course_name: { required: true, label: '课程名', type: 'string', maxLength: 100 },
+  credit: { required: true, label: '学分', type: 'number', min: 0.5, max: 20 },
+  score: { required: true, label: '成绩', type: 'number', min: 0, max: 100 },
+  semester: { label: '学期', type: 'string', maxLength: 50 },
+}), asyncHandler(async (req, res) => {
   const { student_id, course_name, credit, score, semester } = req.body;
-  if (!student_id || !course_name) {
-    return fail(res, 400, 400, '学号和课程名不能为空');
-  }
-  const scoreNum = Number(score);
-  const creditNum = Number(credit);
-  if (!Number.isFinite(scoreNum) || scoreNum < 0 || scoreNum > 100) {
-    return fail(res, 400, 400, '成绩必须是 0-100 之间的数字');
-  }
-  if (!Number.isFinite(creditNum) || creditNum <= 0) {
-    return fail(res, 400, 400, '学分必须是大于 0 的数字');
-  }
   await pool.query(
     'INSERT INTO academic_record (student_id, course_name, credit, score, semester) VALUES (?, ?, ?, ?, ?)',
-    [student_id, course_name, creditNum, scoreNum, semester]
+    [student_id, course_name, credit, score, semester || null]
   );
   ok(res, null, '成绩录入成功');
 }));

@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
-const { computePortrait } = require('../utils/portrait');
+const { computePortrait, computeCareerRecommendation } = require('../utils/portrait');
 
 const router = express.Router();
 
@@ -62,6 +62,17 @@ router.get('/:studentId', asyncHandler(async (req, res) => {
   );
   if (rows.length === 0) return fail(res, 404, 404, '画像不存在，请先计算');
   ok(res, rows[0]);
+}));
+
+// 职业推荐
+router.get('/career/:studentId', asyncHandler(async (req, res) => {
+  const [rows] = await pool.query(
+    'SELECT * FROM ability_profile WHERE student_id = ?',
+    [req.params.studentId]
+  );
+  if (rows.length === 0) return fail(res, 404, 404, '画像不存在，请先计算');
+  const recommendations = computeCareerRecommendation(rows[0]);
+  ok(res, recommendations);
 }));
 
 module.exports = router;

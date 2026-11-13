@@ -31,4 +31,20 @@ router.get('/:id', asyncHandler(async (req, res) => {
   ok(res, rows[0]);
 }));
 
+// 编辑学生
+router.put('/:id', asyncHandler(async (req, res) => {
+  const { name, gender, college, major, grade, phone, email } = req.body;
+  await pool.query(
+    'UPDATE student SET name=?, gender=?, college=?, major=?, grade=?, phone=?, email=? WHERE student_id=?',
+    [name, gender, college, major, grade, phone, email, req.params.id]
+  );
+  ok(res, null, '学生信息更新成功');
+}));
+
+// 删除学生
+router.delete('/:id', asyncHandler(async (req, res) => {
+  await pool.query('DELETE FROM student WHERE student_id = ?', [req.params.id]);
+  ok(res, null, '学生删除成功');
+}));
+
 module.exports = router;
