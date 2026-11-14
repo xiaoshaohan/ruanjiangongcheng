@@ -40,6 +40,7 @@ app.use('/api/practice', require('./routes/practice'));
 app.use('/api/portrait', require('./routes/portrait'));
 app.use('/api/stats', require('./routes/stats'));
 app.use('/api/export', require('./routes/export'));
+app.use('/api/import', require('./routes/import'));
 
 // ---------- 404 兜底 ----------
 app.use((req, res) => fail(res, 404, 404, '接口不存在'));

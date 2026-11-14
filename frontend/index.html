@@ -171,6 +171,25 @@
       outline: none; border-color: #1a73e8;
       box-shadow: 0 0 0 3px rgba(26,115,232,0.1);
     }
+    .search-bar select {
+      padding: 9px 13px; min-width: 130px;
+      border: 1px solid #d8dfe8; border-radius: 7px;
+      font-size: 14px; font-family: inherit; color: #33415c;
+      background: #fff; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .search-bar select:focus {
+      outline: none; border-color: #1a73e8;
+      box-shadow: 0 0 0 3px rgba(26,115,232,0.1);
+    }
+    .count-badge {
+      display: inline-block;
+      margin-left: 8px; padding: 2px 9px;
+      background: #eef4ff; color: #1a73e8;
+      border-radius: 10px; font-size: 12px; font-weight: 500;
+      vertical-align: middle;
+    }
+    .empty-cell { text-align: center; color: #8b9aae; padding: 28px 0; }
 
     /* ---------- 分数卡片 ---------- */
     .score-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
@@ -379,12 +398,17 @@
     <!-- 学生管理页 -->
     <div class="page active" id="page-students">
       <div class="card">
-        <div class="card-title">学生列表</div>
+        <div class="card-title">学生列表 <span class="count-badge" id="studentCount"></span></div>
         <div class="search-bar">
           <input type="text" id="searchInput" placeholder="搜索学号或姓名...">
+          <select id="filterCollege" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
+          <select id="filterMajor" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
+          <select id="filterGrade" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
           <button class="btn btn-primary" onclick="openAddStudent()">添加学生</button>
           <button class="btn btn-default" onclick="exportCsv('/api/export/students','学生列表')">导出学生CSV</button>
           <button class="btn btn-default" onclick="exportCsv('/api/export/portraits','画像报告')">导出画像CSV</button>
+          <button class="btn btn-default" onclick="document.getElementById('csvFile').click()">批量导入CSV</button>
+          <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCsv(this)">
         </div>
         <table>
           <thead><tr><th>学号</th><th>姓名</th><th>性别</th><th>学院</th><th>专业</th><th>年级</th><th>操作</th></tr></thead>
@@ -596,9 +620,32 @@ document.querySelectorAll('.tab').forEach(tab => {
 async function loadStudents(filter = '') {
   const data = await api('/api/students');
   students = data.data;
+
+  // 填充学院 / 年级下拉（数据变化时才重建，保留当前选中）
+  fillFilters();
+  const college = document.getElementById('filterCollege').value;
+  const major = document.getElementById('filterMajor').value;
+  const grade = document.getElementById('filterGrade').value;
+  const list = students.filter(s =>
+    (!filter || s.name.includes(filter) || s.student_id.includes(filter)) &&
+    (!college || s.college === college) &&
+    (!major || s.major === major) &&
+    (!grade || String(s.grade) === grade)
+  );
+
+  const countEl = document.getElementById('studentCount');
+  if (countEl) {
+    countEl.textContent = (filter || college || major || grade)
+      ? `${list.length} / ${students.length} 人`
+      : `${students.length} 人`;
+  }
+
   const tbody = document.getElementById('studentTable');
   tbody.innerHTML = '';
-  students.filter(s => !filter || s.name.includes(filter) || s.student_id.includes(filter)).forEach(s => {
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">没有符合条件的学生</td></tr>';
+  }
+  list.forEach(s => {
     tbody.innerHTML += `<tr>
       <td>${s.student_id}</td><td>${s.name}</td><td>${s.gender === 'M' ? '男' : '女'}</td>
       <td>${s.college}</td><td>${s.major}</td><td>${s.grade}</td>
@@ -614,7 +661,131 @@ async function loadStudents(filter = '') {
   });
 }
 
+// 学院 / 专业 / 年级下拉选项，按现有数据动态生成；专业跟随学院联动
+function fillFilters() {
+  const collegeSel = document.getElementById('filterCollege');
+  const majorSel = document.getElementById('filterMajor');
+  const gradeSel = document.getElementById('filterGrade');
+
+  const colleges = [...new Set(students.map(s => s.college).filter(Boolean))].sort();
+  const grades = [...new Set(students.map(s => s.grade).filter(g => g != null))].sort();
+
+  const collegeKey = colleges.join('|');
+  if (collegeSel.dataset.filled !== collegeKey) {
+    const prev = collegeSel.value;
+    collegeSel.innerHTML = '<option value="">全部学院</option>' +
+      colleges.map(c => `<option value="${c}">${c}</option>`).join('');
+    collegeSel.value = colleges.includes(prev) ? prev : '';
+    collegeSel.dataset.filled = collegeKey;
+  }
+
+  // 专业：只列当前学院下设的专业（未选学院时列全部）
+  const curCollege = collegeSel.value;
+  const majors = [...new Set(
+    students.filter(s => !curCollege || s.college === curCollege).map(s => s.major).filter(Boolean)
+  )].sort();
+  const majorKey = curCollege + '|' + majors.join('|');
+  if (majorSel.dataset.filled !== majorKey) {
+    const prev = majorSel.value;
+    majorSel.innerHTML = '<option value="">全部专业</option>' +
+      majors.map(m => `<option value="${m}">${m}</option>`).join('');
+    majorSel.value = majors.includes(prev) ? prev : '';
+    majorSel.dataset.filled = majorKey;
+  }
+
+  const gradeKey = grades.join('|');
+  if (gradeSel.dataset.filled !== gradeKey) {
+    const prev = gradeSel.value;
+    gradeSel.innerHTML = '<option value="">全部年级</option>' +
+      grades.map(g => `<option value="${g}">${g} 级</option>`).join('');
+    gradeSel.value = grades.map(String).includes(prev) ? prev : '';
+    gradeSel.dataset.filled = gradeKey;
+  }
+}
+
 function openAddStudent() { document.getElementById('addStudentForm').style.display = 'block'; }
+
+// ========== CSV 批量导入 ==========
+// 解析 CSV（支持双引号包裹、引号内逗号/换行、"" 转义）
+function parseCsv(text) {
+  text = text.replace(/^\uFEFF/, ''); // 去掉 Excel 加的 BOM
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(field); field = '';
+    } else if (ch === '\n') {
+      row.push(field); rows.push(row); row = []; field = '';
+    } else if (ch !== '\r') {
+      field += ch;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== ''));
+}
+
+// 首行表头 + 其余数据行 -> 对象数组
+function csvToObjects(rows) {
+  const headers = rows[0].map(h => h.trim());
+  return rows.slice(1).map(r => {
+    const o = {};
+    headers.forEach((h, i) => { o[h] = (r[i] === undefined ? '' : String(r[i])).trim(); });
+    return o;
+  });
+}
+
+// 按表头识别数据类型
+const IMPORT_ENDPOINTS = [
+  { url: '/api/import/students', need: ['student_id', 'name'], label: '学生' },
+  { url: '/api/import/academic', need: ['student_id', 'course_name'], label: '成绩' },
+  { url: '/api/import/research', need: ['student_id', 'project_name'], label: '科研' },
+  { url: '/api/import/practice', need: ['student_id', 'activity_name'], label: '实践' },
+];
+
+async function importCsv(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (rows.length < 2) { toast('CSV 里没有数据行', 'error'); return; }
+
+    const objs = csvToObjects(rows);
+    const keys = Object.keys(objs[0]);
+    const target = IMPORT_ENDPOINTS.find(t => t.need.every(k => keys.includes(k)));
+    if (!target) {
+      toast('无法识别表头，请使用学生/成绩/科研/实践模板', 'error');
+      return;
+    }
+
+    toast(`正在导入${target.label}数据（${objs.length} 行）...`);
+    const res = await api(target.url, 'POST', { rows: objs });
+    if (res.code === 200) {
+      toast(res.message);
+      if (target.label === '学生') loadStudents(document.getElementById('searchInput').value);
+      if (res.data && res.data.errors && res.data.errors.length) {
+        console.warn('导入失败行：', res.data.errors);
+      }
+    } else {
+      toast(res.message || '导入失败', 'error');
+    }
+  } catch (err) {
+    toast('导入出错：' + err.message, 'error');
+  } finally {
+    input.value = ''; // 允许重复选同一个文件
+  }
+}
 
 async function addStudent() {
   const data = {
