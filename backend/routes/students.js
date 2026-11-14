@@ -41,10 +41,29 @@ router.put('/:id', asyncHandler(async (req, res) => {
   ok(res, null, '学生信息更新成功');
 }));
 
-// 删除学生
+// 删除学生（事务级联清理成绩/科研/实践/画像，避免孤儿数据）
 router.delete('/:id', asyncHandler(async (req, res) => {
-  await pool.query('DELETE FROM student WHERE student_id = ?', [req.params.id]);
-  ok(res, null, '学生删除成功');
+  const sid = req.params.id;
+
+  const [exists] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [sid]);
+  if (exists.length === 0) return fail(res, 404, 404, '学生不存在');
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('DELETE FROM academic_record WHERE student_id = ?', [sid]);
+    await conn.query('DELETE FROM research_project WHERE student_id = ?', [sid]);
+    await conn.query('DELETE FROM practice_activity WHERE student_id = ?', [sid]);
+    await conn.query('DELETE FROM ability_profile WHERE student_id = ?', [sid]);
+    await conn.query('DELETE FROM student WHERE student_id = ?', [sid]);
+    await conn.commit();
+    ok(res, null, '学生及其关联数据删除成功');
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }));
 
 module.exports = router;

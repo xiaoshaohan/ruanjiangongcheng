@@ -268,6 +268,22 @@
       box-shadow: 0 0 0 3px rgba(26,115,232,0.1);
     }
 
+    /* ---------- 修改密码弹窗 ---------- */
+    .modal-mask {
+      position: fixed; inset: 0;
+      background: rgba(10, 20, 40, 0.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999;
+    }
+    .modal {
+      background: #fff; border-radius: 12px;
+      padding: 26px 28px;
+      width: 400px; max-width: calc(100vw - 40px);
+      box-shadow: 0 18px 50px rgba(4, 20, 46, 0.28);
+    }
+    .modal-title { font-size: 16px; font-weight: 600; color: #1a2233; margin-bottom: 20px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+
     /* ---------- 滚动条 ---------- */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: #ccd6e0; border-radius: 4px; }
@@ -300,6 +316,7 @@
   <div class="user">
     <div class="avatar" id="avatarLetter">A</div>
     <span id="currentUser">管理员</span>
+    <button class="btn-logout" onclick="openChangePwd()">修改密码</button>
     <button class="btn-logout" onclick="logout()">退出登录</button>
   </div>
 </div>
@@ -466,6 +483,19 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="modal-mask" id="pwdModal" style="display:none">
+  <div class="modal">
+    <div class="modal-title">修改密码</div>
+    <div class="form-row"><label>原密码：</label><input type="password" id="oldPwd" placeholder="请输入原密码"></div>
+    <div class="form-row"><label>新密码：</label><input type="password" id="newPwd" placeholder="至少 6 位"></div>
+    <div class="form-row"><label>确认新密码：</label><input type="password" id="confirmPwd" placeholder="再次输入新密码"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="changePassword()">确认修改</button>
+      <button class="btn btn-default" onclick="closeChangePwd()">取消</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let students = [];
 
@@ -478,6 +508,37 @@ function logout() {
   localStorage.removeItem('token');
   localStorage.removeItem('username');
   location.replace('/login.html');
+}
+
+// ========== 修改密码 ==========
+function openChangePwd() {
+  document.getElementById('oldPwd').value = '';
+  document.getElementById('newPwd').value = '';
+  document.getElementById('confirmPwd').value = '';
+  document.getElementById('pwdModal').style.display = 'flex';
+}
+
+function closeChangePwd() {
+  document.getElementById('pwdModal').style.display = 'none';
+}
+
+async function changePassword() {
+  const oldPassword = document.getElementById('oldPwd').value;
+  const newPassword = document.getElementById('newPwd').value;
+  const confirmPwd = document.getElementById('confirmPwd').value;
+
+  if (!oldPassword || !newPassword || !confirmPwd) return toast('请填写完整', 'error');
+  if (newPassword.length < 6) return toast('新密码至少6位', 'error');
+  if (newPassword !== confirmPwd) return toast('两次输入的新密码不一致', 'error');
+  if (newPassword === oldPassword) return toast('新密码不能与原密码相同', 'error');
+
+  const res = await api('/api/auth/change-password', 'POST', { oldPassword, newPassword });
+  if (res.code === 200) {
+    toast('密码修改成功，请重新登录');
+    setTimeout(logout, 2000);
+  } else {
+    toast(res.message || '修改失败', 'error');
+  }
 }
 
 // 未登录直接跳登录页

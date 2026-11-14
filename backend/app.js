@@ -44,6 +44,17 @@ app.use('/api/export', require('./routes/export'));
 // ---------- 404 兜底 ----------
 app.use((req, res) => fail(res, 404, 404, '接口不存在'));
 
+// ---------- 全局错误兜底 ----------
+app.use((err, req, res, next) => {
+  console.error('[全局错误]', req.method, req.path, err.message);
+  // 请求体 JSON 解析失败
+  if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+    return fail(res, 400, 400, '请求体不是合法的 JSON');
+  }
+  if (res.headersSent) return next(err);
+  fail(res, 500, 500, '服务器内部错误');
+});
+
 // 启动服务
 app.listen(PORT, async () => {
   console.log(`服务器运行在 http://localhost:${PORT}`);

@@ -65,6 +65,48 @@ router.post('/login', validate({
   }, '登录成功');
 }));
 
+// ---------- 注册 ----------
+router.post('/register', validate({
+  username: { required: true, label: '用户名', type: 'string', maxLength: 50 },
+  password: { required: true, label: '密码', type: 'string', maxLength: 100 },
+}), asyncHandler(async (req, res) => {
+  const { username, password } = req.body;
+
+  // 校验中间件不支持字符串最小长度，这里手动补充
+  if (username.length < 3) return fail(res, 400, 400, '用户名至少3个字符');
+  if (password.length < 6) return fail(res, 400, 400, '密码至少6位');
+
+  // 查重，避免用户名重复
+  const [rows] = await pool.query('SELECT id FROM sys_user WHERE username = ?', [username]);
+  if (rows.length > 0) return fail(res, 400, 400, '用户名已被注册');
+
+  await pool.query(
+    'INSERT INTO sys_user (username, password_hash, role) VALUES (?, ?, ?)',
+    [username, hashPassword(password), 'user']
+  );
+  ok(res, { username }, '注册成功');
+}));
+
+// ---------- 修改密码 ----------
+router.post('/change-password', authRequired, validate({
+  oldPassword: { required: true, label: '原密码', type: 'string', maxLength: 100 },
+  newPassword: { required: true, label: '新密码', type: 'string', maxLength: 100 },
+}), asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  if (newPassword.length < 6) return fail(res, 400, 400, '新密码至少6位');
+
+  const [rows] = await pool.query('SELECT * FROM sys_user WHERE id = ?', [req.user.id]);
+  if (rows.length === 0) return fail(res, 404, 404, '用户不存在');
+
+  if (!verifyPassword(oldPassword, rows[0].password_hash)) {
+    return fail(res, 400, 400, '原密码不正确');
+  }
+
+  await pool.query('UPDATE sys_user SET password_hash = ? WHERE id = ?', [hashPassword(newPassword), req.user.id]);
+  ok(res, {}, '密码修改成功，请重新登录');
+}));
+
 // ---------- 获取当前登录用户 ----------
 router.get('/me', authRequired, (req, res) => {
   ok(res, { username: req.user.username, role: req.user.role });
