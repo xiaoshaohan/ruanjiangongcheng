@@ -114,35 +114,57 @@ function toRates(profile, limits) {
 }
 
 // 根据画像得分生成职业推荐
-function computeCareerRecommendation(portrait) {
-  const { academic_score, research_score, practice_score } = portrait;
+function computeCareerRecommendation(portrait, limits) {
+  const l = limits || LIMITS;
+  const academic = Number(portrait.academic_score) || 0;
+  const research = Number(portrait.research_score) || 0;
+  const practice = Number(portrait.practice_score) || 0;
+  const totalScore = Number(portrait.total_score) || 0;
+
+  // 换算成得分率，用同一把尺子比较三个维度是否真的均衡
+  const academicRate = round2(rateOf(academic, l.academicScore));
+  const researchRate = round2(rateOf(research, l.researchScore));
+  const practiceRate = round2(rateOf(practice, l.practiceScore));
+
   const recommendations = [];
 
   // 学术方向：学业强 + 科研强
-  if (academic_score >= 20 && research_score >= 8) {
+  if (academic >= 20 && research >= 8) {
     recommendations.push({
       direction: '学术研究方向',
-      reason: `学业成绩优秀(${academic_score}分)，科研经历丰富(${research_score}分)，适合考研深造、攻读硕士博士，从事科研院所或高校研究工作。`,
-      score: Math.round(academic_score * 0.5 + research_score * 0.5),
+      reason: `学业成绩优秀(${academic}分)，科研经历丰富(${research}分)，适合考研深造、攻读硕士博士，从事科研院所或高校研究工作。`,
+      score: Math.round(academic * 0.5 + research * 0.5),
     });
   }
 
   // 工程实践方向：实践分高
-  if (practice_score >= 20) {
+  if (practice >= 20) {
     recommendations.push({
       direction: '工程实践方向',
-      reason: `实践经历丰富(${practice_score}分)，动手能力强，适合直接就业，从事软件开发、系统运维、技术支持等工程类岗位。`,
-      score: practice_score,
+      reason: `实践经历丰富(${practice}分)，动手能力强，适合直接就业，从事软件开发、系统运维、技术支持等工程类岗位。`,
+      score: practice,
     });
   }
 
-  // 均衡发展方向
   if (recommendations.length === 0) {
-    recommendations.push({
-      direction: '综合发展方向',
-      reason: `各方面发展均衡，建议根据个人兴趣选择考研或就业，目前可以通过参加竞赛、项目实践进一步明确方向。`,
-      score: Math.round(portrait.total_score),
-    });
+    const topRate = Math.max(academicRate, researchRate, practiceRate);
+    const otherRates = Math.max(researchRate, practiceRate);
+
+    if (academicRate >= 60 && academicRate - otherRates >= 20) {
+      // 学业一枝独秀、科研实践明显偏低：不能称为均衡
+      recommendations.push({
+        direction: '学业基础方向',
+        reason: `学业得分率 ${academicRate}%，但科研 ${researchRate}%、实践 ${practiceRate}%，后两项明显偏低，目前缺少科研项目与实践经历的支撑。建议先参加学科竞赛、加入课题组或寻找实习，补齐科研或实践后再确定考研或就业方向。`,
+        score: Math.round(totalScore),
+      });
+    } else {
+      // 没有突出维度
+      recommendations.push({
+        direction: '基础积累方向',
+        reason: `三维得分率最高为 ${topRate}%（学业 ${academicRate}%、科研 ${researchRate}%、实践 ${practiceRate}%），尚未形成明显优势维度。建议先稳住课程成绩，同时开始积累科研或实践经历，再考虑方向选择。`,
+        score: Math.round(totalScore),
+      });
+    }
   }
 
   // 按推荐度排序

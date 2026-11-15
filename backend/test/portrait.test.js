@@ -166,12 +166,30 @@ describe('职业推荐', () => {
     assert.strictEqual(recs[0].direction, '工程实践方向');
   });
 
-  test('各维度都低 → 推荐综合发展方向', () => {
+  test('各维度都低 → 推荐基础积累方向', () => {
     const recs = computeCareerRecommendation({
       academic_score: 10, research_score: 0, practice_score: 5, total_score: 5, gpa: 1.5,
     });
     assert.strictEqual(recs.length, 1);
-    assert.strictEqual(recs[0].direction, '综合发展方向');
+    assert.strictEqual(recs[0].direction, '基础积累方向');
+  });
+
+  test('学业强、科研实践空白 → 推荐学业基础方向，不说均衡', () => {
+    const recs = computeCareerRecommendation({
+      academic_score: 21.5, research_score: 0, practice_score: 0, total_score: 68.8, gpa: 3.5,
+    });
+    assert.strictEqual(recs.length, 1);
+    assert.strictEqual(recs[0].direction, '学业基础方向');
+    assert.ok(recs[0].reason.includes('科研 0%'), '理由应点明科研为 0');
+    assert.ok(!recs[0].reason.includes('均衡'), '不应出现均衡表述');
+  });
+
+  test('没有突出维度 → 推荐基础积累方向', () => {
+    const recs = computeCareerRecommendation({
+      academic_score: 12, research_score: 40, practice_score: 15, total_score: 45, gpa: 2.5,
+    });
+    assert.strictEqual(recs.length, 1);
+    assert.strictEqual(recs[0].direction, '基础积累方向');
   });
 
   test('每条推荐都包含方向、理由和推荐度', () => {
