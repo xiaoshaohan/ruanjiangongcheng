@@ -30,10 +30,10 @@ describe('画像计算 - 学业维度', () => {
     assert.strictEqual(r.academic_score, 22.5);
   });
 
-  test('绩点换算边界：89 分 → 3.0，90 分 → 4.0', async () => {
+  test('绩点换算边界：89 分 → 3.9，90 分 → 4.0', async () => {
     const r89 = await computePortrait('S1', mockConn({ academic: [{ credit: 2, score: 89 }] }));
     const r90 = await computePortrait('S1', mockConn({ academic: [{ credit: 2, score: 90 }] }));
-    assert.strictEqual(r89.gpa, 3.0);
+    assert.strictEqual(r89.gpa, 3.9);
     assert.strictEqual(r90.gpa, 4.0);
   });
 
@@ -44,12 +44,12 @@ describe('画像计算 - 学业维度', () => {
     assert.strictEqual(r60.gpa, 1.0);
   });
 
-  test('多科按学分加权平均', async () => {
-    // (4.0*4 + 2.0*2) / 6 = 3.3333 → 3.33
+  test('多科按学分加权平均（绩点按分数段线性插值）', async () => {
+    // 95 → 4.0；75 → 2.0+(75-70)/10 = 2.5；(4.0*4 + 2.5*2) / 6 = 3.5
     const r = await computePortrait('S1', mockConn({
       academic: [{ credit: 4, score: 95 }, { credit: 2, score: 75 }],
     }));
-    assert.strictEqual(r.gpa, 3.33);
+    assert.strictEqual(r.gpa, 3.5);
     // (95*4 + 75*2) / 6 = 88.333 * 0.25 = 22.08
     assert.strictEqual(r.academic_score, 22.08);
   });
@@ -114,17 +114,17 @@ describe('画像计算 - 实践维度', () => {
 });
 
 describe('画像计算 - 综合总分', () => {
-  test('总分 = 学业率×0.4 + 科研率×0.3 + 实践率×0.3（先归一再加权）', async () => {
+  test('总分 = 学业率×0.8 + 科研率×0.1 + 实践率×0.1（先归一再加权）', async () => {
     const r = await computePortrait('S1', mockConn({
       academic: [{ credit: 4, score: 80 }], // 学业 20 → 得分率 80%
       research: [{ level: '国家级' }],       // 科研 10 → 得分率 10%
       practice: [{ hours: 100 }],            // 实践 10 → 得分率 10%
     }));
-    // 80*0.4 + 10*0.3 + 10*0.3 = 32 + 3 + 3 = 38
+    // 80*0.8 + 10*0.1 + 10*0.1 = 64 + 1 + 1 = 66
     assert.strictEqual(r.academic_score, 20);
     assert.strictEqual(r.research_score, 10);
     assert.strictEqual(r.practice_score, 10);
-    assert.strictEqual(r.total_score, 38);
+    assert.strictEqual(r.total_score, 66);
   });
 
   test('结果统一保留两位小数', async () => {
@@ -133,11 +133,11 @@ describe('画像计算 - 综合总分', () => {
       research: [{ level: '校级' }],
       practice: [{ hours: 25 }],
     }));
-    assert.strictEqual(r.gpa, 3); // (80-89 档 3.0×3)/3 = 3
+    assert.strictEqual(r.gpa, 3.7); // 3.0 + (87-80)/10 = 3.7
     assert.strictEqual(r.academic_score, 21.75); // 87×0.25
     // 学业率 21.75/25=87%，科研率 3%，实践率 2.5%
-    // 87×0.4 + 3×0.3 + 2.5×0.3 = 34.8 + 0.9 + 0.75 = 36.45
-    assert.strictEqual(r.total_score, 36.45);
+    // 87×0.8 + 3×0.1 + 2.5×0.1 = 69.6 + 0.3 + 0.25 = 70.15
+    assert.strictEqual(r.total_score, 70.15);
   });
 
   test('总分上限为 100（各维满分时）', async () => {

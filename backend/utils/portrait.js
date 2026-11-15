@@ -13,17 +13,19 @@ const WEIGHTS = DEFAULT_CONFIG.weights;
 // 单维度得分率（0-100）：得分 / 标准分 × 100，用于雷达图与总分的统一口径
 const rateOf = (score, full) => (full > 0 ? (score / full) * 100 : 0);
 
-// 将满分制的 score（0-100）换算为 4.0 制 GPA。分数越高则绩点越高。
-function scoreToGpa(score) {
-  if (score >= 90) return 4.0; // 90-100
-  if (score >= 80) return 3.0; // 80-89
-  if (score >= 70) return 2.0; // 70-79
-  if (score >= 60) return 1.0; // 60-69
-  return 0;                    // <60（不及格）
-}
-
 // 统一保留两位小数，并防御 NaN
 const round2 = (n) => (Number.isFinite(n) ? Math.round(n * 100) / 100 : 0);
+
+// 将满分制的 score（0-100）换算为 4.0 制 GPA，按分数段线性插值：
+// 90-100 → 4.0；80-89 → 3.0~3.9；70-79 → 2.0~2.9；60-69 → 1.0~1.9；<60 → 0
+function scoreToGpa(score) {
+  const s = Number(score);
+  if (!Number.isFinite(s) || s < 60) return 0;   // 不及格记 0
+  if (s >= 90) return 4.0;                       // 90 分及以上满绩
+  if (s >= 80) return round2(3.0 + (s - 80) / 10); // 81→3.1 … 89→3.9
+  if (s >= 70) return round2(2.0 + (s - 70) / 10); // 71→2.1 … 79→2.9
+  return round2(1.0 + (s - 60) / 10);              // 61→1.1 … 69→1.9
+}
 
 // 计算学生画像，返回各维度得分。conn 需为 mysql2 连接（池连接或事务连接）。
 // config 不传时使用默认规则，便于单元测试与离线调用。

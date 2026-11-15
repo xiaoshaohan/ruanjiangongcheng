@@ -1388,14 +1388,14 @@ async function loadDashboard() {
     <div class="stat-card"><div class="label">科研项目</div><div class="value">${d.overview.research_projects}</div></div>
     <div class="stat-card"><div class="label">实践活动</div><div class="value">${d.overview.practice_activities}</div></div>`;
 
-  // 总分分布饼图
+  // 总分分布饼图（20 分一档）
   const sd = d.score_distribution;
   const pieData = [
-    { name: '0-25分', value: Number(sd.range_0_25) || 0 },
-    { name: '25-30分', value: Number(sd.range_25_30) || 0 },
-    { name: '30-35分', value: Number(sd.range_30_35) || 0 },
-    { name: '35-40分', value: Number(sd.range_35_40) || 0 },
-    { name: '40分以上', value: Number(sd.range_40_100) || 0 },
+    { name: '0-20分', value: Number(sd.range_0_20) || 0 },
+    { name: '20-40分', value: Number(sd.range_20_40) || 0 },
+    { name: '40-60分', value: Number(sd.range_40_60) || 0 },
+    { name: '60-80分', value: Number(sd.range_60_80) || 0 },
+    { name: '80-100分', value: Number(sd.range_80_100) || 0 },
   ];
   const hasPieData = pieData.some(x => x.value > 0);
   const distEl = document.getElementById('distChart');

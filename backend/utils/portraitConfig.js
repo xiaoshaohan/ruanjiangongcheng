@@ -2,8 +2,8 @@
 // 注意：数据库连接按需加载，避免纯单元测试引入本模块时建立连接池导致进程不退出
 
 const DEFAULT_CONFIG = {
-  // 三维权重，合计必须为 1
-  weights: { academic: 0.4, research: 0.3, practice: 0.3 },
+  // 三维权重，合计必须为 1（学业为主，科研与实践各占一成）
+  weights: { academic: 0.8, research: 0.1, practice: 0.1 },
   // 各维度标准分（满分），用于换算得分率
   limits: { academicScore: 25, researchScore: 100, practiceScore: 100 },
   // 学业分 = 加权平均分 × factor

@@ -54,11 +54,11 @@ router.get('/', asyncHandler(async (req, res) => {
 
   const [distRows] = await pool.query(
     `SELECT
-       SUM(CASE WHEN p.total_score < 25 THEN 1 ELSE 0 END) AS range_0_25,
-       SUM(CASE WHEN p.total_score >= 25 AND p.total_score < 30 THEN 1 ELSE 0 END) AS range_25_30,
-       SUM(CASE WHEN p.total_score >= 30 AND p.total_score < 35 THEN 1 ELSE 0 END) AS range_30_35,
-       SUM(CASE WHEN p.total_score >= 35 AND p.total_score < 40 THEN 1 ELSE 0 END) AS range_35_40,
-       SUM(CASE WHEN p.total_score >= 40 THEN 1 ELSE 0 END) AS range_40_100
+       SUM(CASE WHEN p.total_score < 20 THEN 1 ELSE 0 END) AS range_0_20,
+       SUM(CASE WHEN p.total_score >= 20 AND p.total_score < 40 THEN 1 ELSE 0 END) AS range_20_40,
+       SUM(CASE WHEN p.total_score >= 40 AND p.total_score < 60 THEN 1 ELSE 0 END) AS range_40_60,
+       SUM(CASE WHEN p.total_score >= 60 AND p.total_score < 80 THEN 1 ELSE 0 END) AS range_60_80,
+       SUM(CASE WHEN p.total_score >= 80 THEN 1 ELSE 0 END) AS range_80_100
      FROM ability_profile p
      JOIN student s ON p.student_id = s.student_id
      WHERE 1=1` + sCond,

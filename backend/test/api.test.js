@@ -97,8 +97,8 @@ test('录入两门成绩后计算并查询画像', async () => {
   assert.equal(result.status, 200);
   assert.equal(result.body.data.gpa, 3.5);
   assert.equal(result.body.data.academic_score, 22.5);
-  // 归一化口径：学业率 22.5/25 = 90%，科研/实践为 0 → 总分 = 90×0.4 = 36
-  assert.equal(result.body.data.total_score, 36);
+  // 归一化口径：学业率 22.5/25 = 90%，科研/实践为 0 → 总分 = 90×0.8 = 72
+  assert.equal(result.body.data.total_score, 72);
   const saved = await request('/api/portrait/TEST001');
   assert.equal(saved.status, 200);
   assert.equal(saved.body.data.academic_score, 22.5);
