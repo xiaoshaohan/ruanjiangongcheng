@@ -119,6 +119,10 @@
       <label>确认密码</label>
       <input type="password" id="confirm" placeholder="再次输入密码" autocomplete="new-password">
     </div>
+    <div class="field">
+      <label>学号（选填）</label>
+      <input type="text" id="studentId" placeholder="如 2022001，绑定后可查看自己的画像">
+    </div>
     <button type="submit" class="btn" id="submitBtn">注 册</button>
   </form>
 
@@ -145,6 +149,7 @@ form.onsubmit = async (e) => {
   const username = document.getElementById('username').value.trim();
   const password = document.getElementById('password').value;
   const confirm = document.getElementById('confirm').value;
+  const studentId = document.getElementById('studentId').value.trim();
 
   if (!username || !password || !confirm) {
     return showError('请填写所有字段');
@@ -163,7 +168,7 @@ form.onsubmit = async (e) => {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, student_id: studentId }),
     });
     const data = await res.json();
 

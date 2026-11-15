@@ -126,6 +126,11 @@
       transition: all 0.2s;
       font-family: inherit;
     }
+    /* 表格内小号操作按钮 */
+    .btn-mini {
+      padding: 4px 11px; font-size: 12px; border-radius: 6px;
+      margin-right: 6px;
+    }
     .btn-primary {
       background: linear-gradient(180deg, #2b81f0, #1a73e8);
       color: #fff;
@@ -201,6 +206,7 @@
     }
     .score-card .label { font-size: 13px; color: #7c8ba3; margin-bottom: 8px; }
     .score-card .value { font-size: 26px; font-weight: 700; color: #1a73e8; letter-spacing: -0.5px; }
+    .score-card .hint { font-size: 11px; color: #9aa7bd; margin-top: 6px; }
 
     #radar { width: 100%; height: 350px; }
 
@@ -214,6 +220,15 @@
     }
     .rec-item .title { font-weight: 600; color: #1a2233; margin-bottom: 7px; font-size: 14px; }
     .rec-item .reason { font-size: 13px; color: #6b7c93; line-height: 1.7; }
+    .rec-meta { font-size: 12px; color: #a3b0c1; margin-bottom: 10px; }
+    .cfg-hint { font-size: 12px; color: #a3b0c1; margin-bottom: 14px; line-height: 1.7; }
+    .cfg-section { font-size: 13px; font-weight: 600; color: #1a2233; margin: 20px 0 10px; padding-left: 8px; border-left: 3px solid #1a73e8; }
+    .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 18px; }
+    .cfg-unit { font-size: 12px; color: #a3b0c1; margin-left: 6px; }
+    .history-title { font-size: 13px; color: #5a6b82; font-weight: 600; margin: 18px 0 10px; padding-top: 14px; border-top: 1px dashed #e3e9f1; }
+    .history-batch { background: #fafbfd; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
+    .history-item { font-size: 13px; color: #4a5a72; line-height: 1.8; }
+    .record-title { font-size: 13px; font-weight: 600; color: #1a2233; margin: 16px 0 8px; }
 
     /* ---------- 提示 ---------- */
     .toast {
@@ -372,11 +387,41 @@
       </svg>
       学生对比
     </div>
+    <div class="menu-item" data-page="users" id="menuUsers" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 2.5-5 6-5s6 2 6 5"/>
+        <path d="M17 11a3 3 0 1 0 0-6"/><path d="M21 20c0-2.2-1.4-3.8-3.5-4.5"/>
+      </svg>
+      用户管理
+    </div>
+    <div class="menu-item" data-page="myprofile" id="menuMyProfile" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/>
+      </svg>
+      我的画像
+    </div>
+    <div class="menu-item" data-page="settings" id="menuSettings" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>
+      </svg>
+      系统设置
+    </div>
   </div>
 
   <div class="main">
     <!-- 数据看板页 -->
     <div class="page" id="page-dashboard">
+      <div class="card">
+        <div class="search-bar">
+          <select id="dashCollege" onchange="loadDashboard()"><option value="">全部学院</option></select>
+          <select id="dashMajor" onchange="loadDashboard()"><option value="">全部专业</option></select>
+          <select id="dashGrade" onchange="loadDashboard()"><option value="">全部年级</option></select>
+          <select id="dashSemester" onchange="loadDashboard()"><option value="">全部学期</option></select>
+          <button class="btn btn-default" onclick="resetDashboardFilters()">重置筛选</button>
+          <span id="dashScopeHint" style="color:#8b9aae;font-size:13px;margin-left:4px"></span>
+        </div>
+      </div>
       <div class="stat-cards" id="statCards"></div>
       <div class="card">
         <div class="card-title">综合总分分布</div>
@@ -404,10 +449,10 @@
           <select id="filterCollege" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
           <select id="filterMajor" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
           <select id="filterGrade" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
-          <button class="btn btn-primary" onclick="openAddStudent()">添加学生</button>
+          <button class="btn btn-primary admin-only" onclick="openAddStudent()">添加学生</button>
           <button class="btn btn-default" onclick="exportCsv('/api/export/students','学生列表')">导出学生CSV</button>
           <button class="btn btn-default" onclick="exportCsv('/api/export/portraits','画像报告')">导出画像CSV</button>
-          <button class="btn btn-default" onclick="document.getElementById('csvFile').click()">批量导入CSV</button>
+          <button class="btn btn-default admin-only" onclick="document.getElementById('csvFile').click()">批量导入CSV</button>
           <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCsv(this)">
         </div>
         <table>
@@ -450,7 +495,10 @@
           <div class="form-row"><label>学分：</label><input type="number" id="acCredit" placeholder="如 4" step="0.5"></div>
           <div class="form-row"><label>成绩：</label><input type="number" id="acScore" placeholder="0-100"></div>
           <div class="form-row"><label>学期：</label><input type="text" id="acSemester" placeholder="如 2023春"></div>
-          <div class="form-row"><label></label><button class="btn btn-primary" onclick="addAcademic()">提交成绩</button></div>
+          <div class="form-row"><label></label>
+            <button class="btn btn-primary" id="acSubmitBtn" onclick="addAcademic()">提交成绩</button>
+            <button class="btn btn-default" id="acCancelBtn" style="display:none;margin-left:8px" onclick="cancelEdit('academic')">取消编辑</button>
+          </div>
           <div class="record-title">该学生已录入的成绩</div>
           <div id="academicList"><div class="empty">请先选择学生</div></div>
         </div>
@@ -460,7 +508,10 @@
           <div class="form-row"><label>级别：</label><select id="rsLevel"><option value="国家级">国家级</option><option value="省级">省级</option><option value="校级">校级</option></select></div>
           <div class="form-row"><label>开始时间：</label><input type="date" id="rsStart"></div>
           <div class="form-row"><label>结束时间：</label><input type="date" id="rsEnd"></div>
-          <div class="form-row"><label></label><button class="btn btn-primary" onclick="addResearch()">提交项目</button></div>
+          <div class="form-row"><label></label>
+            <button class="btn btn-primary" id="rsSubmitBtn" onclick="addResearch()">提交项目</button>
+            <button class="btn btn-default" id="rsCancelBtn" style="display:none;margin-left:8px" onclick="cancelEdit('research')">取消编辑</button>
+          </div>
           <div class="record-title">该学生已录入的科研项目</div>
           <div id="researchList"><div class="empty">请先选择学生</div></div>
         </div>
@@ -469,7 +520,10 @@
           <div class="form-row"><label>类型：</label><input type="text" id="prType" placeholder="如 实习/竞赛/志愿"></div>
           <div class="form-row"><label>时长(小时)：</label><input type="number" id="prHours" placeholder="如 40"></div>
           <div class="form-row"><label>描述：</label><input type="text" id="prDesc" placeholder="简单描述"></div>
-          <div class="form-row"><label></label><button class="btn btn-primary" onclick="addPractice()">提交实践</button></div>
+          <div class="form-row"><label></label>
+            <button class="btn btn-primary" id="prSubmitBtn" onclick="addPractice()">提交实践</button>
+            <button class="btn btn-default" id="prCancelBtn" style="display:none;margin-left:8px" onclick="cancelEdit('practice')">取消编辑</button>
+          </div>
           <div class="record-title">该学生已录入的实践经历</div>
           <div id="practiceList"><div class="empty">请先选择学生</div></div>
         </div>
@@ -501,6 +555,91 @@
         </div>
       </div>
       <div id="compareResult"><div class="empty">请选择两名学生进行对比</div></div>
+    </div>
+
+    <!-- 用户管理页（仅管理员） -->
+    <div class="page" id="page-users">
+      <div class="card">
+        <div class="card-title">用户列表 <span class="count-badge" id="userCount"></span></div>
+        <div class="search-bar">
+          <button class="btn btn-primary" onclick="toggleAddUser()">新建用户</button>
+          <button class="btn btn-default" onclick="loadUsers()">刷新</button>
+        </div>
+        <table>
+          <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>绑定学号</th><th>创建时间</th><th>操作</th></tr></thead>
+          <tbody id="userTable"></tbody>
+        </table>
+      </div>
+      <div class="card" id="addUserForm" style="display:none">
+        <div class="card-title">新建用户</div>
+        <div class="form-row"><label>用户名：</label><input type="text" id="newUsername" placeholder="3-50 个字符"></div>
+        <div class="form-row"><label>密码：</label><input type="password" id="newUserPwd" placeholder="至少 6 位"></div>
+        <div class="form-row"><label>角色：</label>
+          <select id="newUserRole">
+            <option value="student">学生</option>
+            <option value="teacher">教师</option>
+            <option value="admin">管理员</option>
+          </select>
+        </div>
+        <div class="form-row"><label>绑定学号：</label><input type="text" id="newUserSid" placeholder="仅学生角色需要，如 2022001"></div>
+        <div class="form-row"><label></label>
+          <button class="btn btn-primary" onclick="createUser()">创建</button>
+          <button class="btn btn-default" style="margin-left:8px" onclick="toggleAddUser()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的画像页（仅学生） -->
+    <div class="page" id="page-myprofile">
+      <div class="card">
+        <div class="card-title" id="myProfileTitle">我的能力画像</div>
+        <div id="myProfileBody"><div class="empty">加载中...</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">我的明细记录</div>
+        <div id="myRecords"><div class="empty">加载中...</div></div>
+      </div>
+    </div>
+
+    <!-- 系统设置页（仅管理员） -->
+    <div class="page" id="page-settings">
+      <div class="card">
+        <div class="card-title">画像权重与计分规则</div>
+        <div class="cfg-hint">修改后不会自动重算，需要在下方点"按当前配置重算全部"才会写回画像表。</div>
+
+        <div class="cfg-section">维度权重（三项之和必须为 1）</div>
+        <div class="cfg-grid">
+          <div class="form-row"><label>学业权重：</label><input type="number" id="cfgWeightAcademic" step="0.01" min="0" max="1"></div>
+          <div class="form-row"><label>科研权重：</label><input type="number" id="cfgWeightResearch" step="0.01" min="0" max="1"></div>
+          <div class="form-row"><label>实践权重：</label><input type="number" id="cfgWeightPractice" step="0.01" min="0" max="1"></div>
+        </div>
+
+        <div class="cfg-section">各维度标准分（满分，用于换算得分率）</div>
+        <div class="cfg-grid">
+          <div class="form-row"><label>学业标准分：</label><input type="number" id="cfgLimitAcademic" step="1" min="1"></div>
+          <div class="form-row"><label>科研标准分：</label><input type="number" id="cfgLimitResearch" step="1" min="1"></div>
+          <div class="form-row"><label>实践标准分：</label><input type="number" id="cfgLimitPractice" step="1" min="1"></div>
+        </div>
+
+        <div class="cfg-section">换算系数（学业分 = 加权平均分 × 系数；实践按每多少小时记 1 分）</div>
+        <div class="cfg-grid">
+          <div class="form-row"><label>学业系数：</label><input type="number" id="cfgAcademicFactor" step="0.01" min="0.01"></div>
+          <div class="form-row"><label>小时/分：</label><input type="number" id="cfgHoursPerPoint" step="1" min="1"></div>
+        </div>
+
+        <div class="cfg-section">科研项目分值</div>
+        <div class="cfg-grid">
+          <div class="form-row"><label>国家级：</label><input type="number" id="cfgPointNational" step="0.5" min="0"></div>
+          <div class="form-row"><label>省级：</label><input type="number" id="cfgPointProvincial" step="0.5" min="0"></div>
+          <div class="form-row"><label>校级：</label><input type="number" id="cfgPointSchool" step="0.5" min="0"></div>
+        </div>
+
+        <div class="form-row" style="margin-top:18px">
+          <button class="btn btn-primary" onclick="saveSettings()">保存配置</button>
+          <button class="btn btn-default" style="margin-left:8px" onclick="resetSettings()">恢复默认</button>
+          <button class="btn btn-default" style="margin-left:8px" onclick="recalcAll()">按当前配置重算全部</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -574,6 +713,73 @@ const loginName = localStorage.getItem('username') || '管理员';
 document.getElementById('currentUser').textContent = loginName;
 document.getElementById('avatarLetter').textContent = loginName.charAt(0).toUpperCase();
 
+// ========== 角色与菜单 ==========
+// 角色：admin 管理员（全部功能）/ teacher 教师（录入、查询、统计）/ student 学生（只看自己）
+let CURRENT_ROLE = 'admin';
+let CURRENT_STUDENT_ID = null;
+
+const ROLE_LABEL = { admin: '管理员', teacher: '教师', student: '学生' };
+const MENU_RULES = {
+  dashboard: ['admin', 'teacher'],
+  students: ['admin', 'teacher'],
+  entry: ['admin', 'teacher'],
+  portrait: ['admin', 'teacher'],
+  compare: ['admin', 'teacher'],
+  users: ['admin'],
+  myprofile: ['student'],
+  settings: ['admin'],
+};
+
+// 切换页面并按需加载数据
+function activatePage(page) {
+  document.querySelectorAll('.menu-item').forEach(i => {
+    i.classList.toggle('active', i.dataset.page === page);
+  });
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + page);
+  if (target) target.classList.add('active');
+
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'students') loadStudents();
+  if (page === 'users') loadUsers();
+  if (page === 'myprofile') loadMyProfile();
+  if (page === 'settings') loadSettings();
+}
+
+async function initRole() {
+  try {
+    const res = await api('/api/auth/me');
+    if (res.code === 200) {
+      CURRENT_ROLE = res.data.role;
+      CURRENT_STUDENT_ID = res.data.student_id;
+    }
+  } catch (e) {
+    // 拿不到角色信息时按只读处理，不放开管理功能
+    CURRENT_ROLE = 'teacher';
+  }
+
+  const label = ROLE_LABEL[CURRENT_ROLE] || CURRENT_ROLE;
+  document.getElementById('currentUser').textContent = loginName + '（' + label + '）';
+
+  // 按角色显示菜单
+  document.querySelectorAll('.menu-item').forEach(item => {
+    const allowed = (MENU_RULES[item.dataset.page] || ['admin']).includes(CURRENT_ROLE);
+    item.style.display = allowed ? '' : 'none';
+    if (!allowed) item.classList.remove('active');
+  });
+
+  // 仅管理员可用的按钮
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = CURRENT_ROLE === 'admin' ? '' : 'none';
+  });
+
+  activatePage(CURRENT_ROLE === 'student' ? 'myprofile' : 'students');
+}
+
+document.querySelectorAll('.menu-item').forEach(item => {
+  item.onclick = () => activatePage(item.dataset.page);
+});
+
 function toast(msg, type = 'success') {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -598,16 +804,6 @@ async function api(url, method = 'GET', data = null) {
   return res.json();
 }
 
-document.querySelectorAll('.menu-item').forEach(item => {
-  item.onclick = () => {
-    document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
-    item.classList.add('active');
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.getElementById('page-' + item.dataset.page).classList.add('active');
-    if (item.dataset.page === 'dashboard') loadDashboard();
-  };
-});
-
 document.querySelectorAll('.tab').forEach(tab => {
   tab.onclick = () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -616,6 +812,9 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
   };
 });
+
+// 页面加载后按角色初始化界面
+initRole();
 
 async function loadStudents(filter = '') {
   const data = await api('/api/students');
@@ -646,10 +845,14 @@ async function loadStudents(filter = '') {
     tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">没有符合条件的学生</td></tr>';
   }
   list.forEach(s => {
+    // 删除学生仅管理员可用，教师只能查看
+    const actions = CURRENT_ROLE === 'admin'
+      ? `<button class="btn btn-danger" onclick="delStudent('${s.student_id}')">删除</button>`
+      : '<span style="color:#9aa7bd">—</span>';
     tbody.innerHTML += `<tr>
       <td>${s.student_id}</td><td>${s.name}</td><td>${s.gender === 'M' ? '男' : '女'}</td>
       <td>${s.college}</td><td>${s.major}</td><td>${s.grade}</td>
-      <td><button class="btn btn-danger" onclick="delStudent('${s.student_id}')">删除</button></td>
+      <td>${actions}</td>
     </tr>`;
   });
   ['entryStudent', 'portraitStudent', 'compareA', 'compareB'].forEach(id => {
@@ -808,6 +1011,10 @@ async function delStudent(sid) {
 }
 
 // ========== 数据录入 ==========
+// 记录缓存 + 编辑态：每类记录同一时间只编辑一条
+const recordCache = { academic: [], research: [], practice: [] };
+const editState = { academic: null, research: null, practice: null };
+
 // 加载所选学生的已有记录，录入后也能立刻看到
 async function loadStudentRecords(sid) {
   const summary = document.getElementById('entrySummary');
@@ -829,30 +1036,118 @@ async function loadStudentRecords(sid) {
   const acRows = (ac && ac.data) || [];
   const rsRows = (rs && rs.data) || [];
   const prRows = (pr && pr.data) || [];
+  recordCache.academic = acRows;
+  recordCache.research = rsRows;
+  recordCache.practice = prRows;
 
   // 成绩表
   document.getElementById('academicList').innerHTML = acRows.length
-    ? `<table><thead><tr><th>课程</th><th>学分</th><th>成绩</th><th>学期</th></tr></thead><tbody>
-        ${acRows.map((r) => `<tr><td>${r.course_name}</td><td>${Number(r.credit)}</td><td>${Number(r.score)}</td><td>${r.semester || '-'}</td></tr>`).join('')}
+    ? `<table><thead><tr><th>课程</th><th>学分</th><th>成绩</th><th>学期</th><th>操作</th></tr></thead><tbody>
+        ${acRows.map((r) => `<tr><td>${r.course_name}</td><td>${Number(r.credit)}</td><td>${Number(r.score)}</td><td>${r.semester || '-'}</td>
+          <td class="op-cell">
+            <button class="btn btn-default btn-mini" onclick="editRecord('academic', ${r.id})">编辑</button>
+            <button class="btn btn-danger btn-mini" onclick="delRecord('academic', ${r.id})">删除</button>
+          </td></tr>`).join('')}
        </tbody></table>`
     : '<div class="empty">暂无成绩记录</div>';
 
   // 科研表
   document.getElementById('researchList').innerHTML = rsRows.length
-    ? `<table><thead><tr><th>项目名称</th><th>角色</th><th>级别</th><th>起止时间</th></tr></thead><tbody>
+    ? `<table><thead><tr><th>项目名称</th><th>角色</th><th>级别</th><th>起止时间</th><th>操作</th></tr></thead><tbody>
         ${rsRows.map((r) => `<tr><td>${r.project_name}</td><td>${r.role || '-'}</td><td>${r.level || '-'}</td>
-          <td>${(r.start_date || '').toString().slice(0, 10)} ~ ${(r.end_date || '').toString().slice(0, 10)}</td></tr>`).join('')}
+          <td>${(r.start_date || '').toString().slice(0, 10)} ~ ${(r.end_date || '').toString().slice(0, 10)}</td>
+          <td class="op-cell">
+            <button class="btn btn-default btn-mini" onclick="editRecord('research', ${r.id})">编辑</button>
+            <button class="btn btn-danger btn-mini" onclick="delRecord('research', ${r.id})">删除</button>
+          </td></tr>`).join('')}
        </tbody></table>`
     : '<div class="empty">暂无科研项目</div>';
 
   // 实践表
   document.getElementById('practiceList').innerHTML = prRows.length
-    ? `<table><thead><tr><th>活动名称</th><th>类型</th><th>时长(小时)</th><th>描述</th></tr></thead><tbody>
-        ${prRows.map((r) => `<tr><td>${r.activity_name}</td><td>${r.type || '-'}</td><td>${r.hours || 0}</td><td>${r.description || '-'}</td></tr>`).join('')}
+    ? `<table><thead><tr><th>活动名称</th><th>类型</th><th>时长(小时)</th><th>描述</th><th>操作</th></tr></thead><tbody>
+        ${prRows.map((r) => `<tr><td>${r.activity_name}</td><td>${r.type || '-'}</td><td>${r.hours || 0}</td><td>${r.description || '-'}</td>
+          <td class="op-cell">
+            <button class="btn btn-default btn-mini" onclick="editRecord('practice', ${r.id})">编辑</button>
+            <button class="btn btn-danger btn-mini" onclick="delRecord('practice', ${r.id})">删除</button>
+          </td></tr>`).join('')}
        </tbody></table>`
     : '<div class="empty">暂无实践经历</div>';
 
   summary.textContent = `已有：成绩 ${acRows.length} 条 · 科研 ${rsRows.length} 项 · 实践 ${prRows.length} 项`;
+}
+
+// 把某条记录载回上方表单，提交时走 PUT
+function editRecord(type, id) {
+  const row = (recordCache[type] || []).find((r) => Number(r.id) === Number(id));
+  if (!row) return toast('记录不存在，请刷新后重试', 'error');
+
+  editState[type] = id;
+
+  if (type === 'academic') {
+    document.getElementById('acCourse').value = row.course_name || '';
+    document.getElementById('acCredit').value = Number(row.credit);
+    document.getElementById('acScore').value = Number(row.score);
+    document.getElementById('acSemester').value = row.semester || '';
+    document.getElementById('acSubmitBtn').textContent = '保存修改';
+    document.getElementById('acCancelBtn').style.display = 'inline-block';
+  } else if (type === 'research') {
+    document.getElementById('rsName').value = row.project_name || '';
+    document.getElementById('rsRole').value = row.role || '';
+    document.getElementById('rsLevel').value = row.level || '校级';
+    document.getElementById('rsStart').value = (row.start_date || '').toString().slice(0, 10);
+    document.getElementById('rsEnd').value = (row.end_date || '').toString().slice(0, 10);
+    document.getElementById('rsSubmitBtn').textContent = '保存修改';
+    document.getElementById('rsCancelBtn').style.display = 'inline-block';
+  } else if (type === 'practice') {
+    document.getElementById('prName').value = row.activity_name || '';
+    document.getElementById('prType').value = row.type || '';
+    document.getElementById('prHours').value = row.hours || 0;
+    document.getElementById('prDesc').value = row.description || '';
+    document.getElementById('prSubmitBtn').textContent = '保存修改';
+    document.getElementById('prCancelBtn').style.display = 'inline-block';
+  }
+  toast('已载入表单，修改后点"保存修改"');
+}
+
+// 退出编辑态并清空表单
+function cancelEdit(type) {
+  editState[type] = null;
+  if (type === 'academic') {
+    ['acCourse', 'acCredit', 'acScore', 'acSemester'].forEach((id) => { document.getElementById(id).value = ''; });
+    document.getElementById('acSubmitBtn').textContent = '提交成绩';
+    document.getElementById('acCancelBtn').style.display = 'none';
+  } else if (type === 'research') {
+    ['rsName', 'rsRole', 'rsStart', 'rsEnd'].forEach((id) => { document.getElementById(id).value = ''; });
+    document.getElementById('rsSubmitBtn').textContent = '提交项目';
+    document.getElementById('rsCancelBtn').style.display = 'none';
+  } else if (type === 'practice') {
+    ['prName', 'prType', 'prHours', 'prDesc'].forEach((id) => { document.getElementById(id).value = ''; });
+    document.getElementById('prSubmitBtn').textContent = '提交实践';
+    document.getElementById('prCancelBtn').style.display = 'none';
+  }
+}
+
+// 删除一条记录（改了明细后静默重算画像，避免画像和明细对不上）
+async function delRecord(type, id) {
+  if (!confirm('删除后不可恢复，确认删除这条记录？')) return;
+  const sid = document.getElementById('entryStudent').value;
+
+  const res = await api(`/api/${type}/${id}`, 'DELETE');
+  if (res.code === 200) {
+    toast('已删除');
+    if (editState[type] === id) cancelEdit(type);
+    await recalcPortrait(sid);
+    loadStudentRecords(sid);
+  } else {
+    toast(res.message || '删除失败', 'error');
+  }
+}
+
+// 明细变动后重算画像（失败不影响主流程）
+async function recalcPortrait(sid) {
+  if (!sid) return;
+  try { await api('/api/portrait/calculate/' + sid, 'POST'); } catch (e) { /* 忽略 */ }
 }
 
 async function addAcademic() {
@@ -865,12 +1160,15 @@ async function addAcademic() {
     score: document.getElementById('acScore').value,
     semester: document.getElementById('acSemester').value,
   };
-  const res = await api('/api/academic', 'POST', data);
+  const editingId = editState.academic;
+  const res = editingId
+    ? await api('/api/academic/' + editingId, 'PUT', data)
+    : await api('/api/academic', 'POST', data);
+
   if (res.code === 200) {
-    toast('成绩录入成功');
-    document.getElementById('acCourse').value = '';
-    document.getElementById('acCredit').value = '';
-    document.getElementById('acScore').value = '';
+    toast(editingId ? '成绩已更新' : '成绩录入成功');
+    cancelEdit('academic');
+    await recalcPortrait(sid);
     loadStudentRecords(sid);
   } else {
     toast(res.message, 'error');
@@ -888,11 +1186,15 @@ async function addResearch() {
     start_date: document.getElementById('rsStart').value,
     end_date: document.getElementById('rsEnd').value,
   };
-  const res = await api('/api/research', 'POST', data);
+  const editingId = editState.research;
+  const res = editingId
+    ? await api('/api/research/' + editingId, 'PUT', data)
+    : await api('/api/research', 'POST', data);
+
   if (res.code === 200) {
-    toast('科研项目录入成功');
-    document.getElementById('rsName').value = '';
-    document.getElementById('rsRole').value = '';
+    toast(editingId ? '科研项目已更新' : '科研项目录入成功');
+    cancelEdit('research');
+    await recalcPortrait(sid);
     loadStudentRecords(sid);
   } else {
     toast(res.message, 'error');
@@ -909,13 +1211,15 @@ async function addPractice() {
     hours: document.getElementById('prHours').value,
     description: document.getElementById('prDesc').value,
   };
-  const res = await api('/api/practice', 'POST', data);
+  const editingId = editState.practice;
+  const res = editingId
+    ? await api('/api/practice/' + editingId, 'PUT', data)
+    : await api('/api/practice', 'POST', data);
+
   if (res.code === 200) {
-    toast('实践经历录入成功');
-    document.getElementById('prName').value = '';
-    document.getElementById('prType').value = '';
-    document.getElementById('prHours').value = '';
-    document.getElementById('prDesc').value = '';
+    toast(editingId ? '实践经历已更新' : '实践经历录入成功');
+    cancelEdit('practice');
+    await recalcPortrait(sid);
     loadStudentRecords(sid);
   } else {
     toast(res.message, 'error');
@@ -936,29 +1240,58 @@ async function loadPortrait() {
   const box = document.getElementById('portraitResult');
   if (res.code === 404) { box.innerHTML = '<div class="empty">该学生暂无画像数据，点击"重新计算画像"按钮生成</div>'; return; }
   const p = res.data;
+  // rates 由后端按各维标准分换算，0-100，三个维度同一把尺子
+  const rates = p.rates || { academic: 0, research: 0, practice: 0 };
   box.innerHTML = `
     <div class="card">
       <div class="card-title">${p.name} - 能力画像</div>
       <div class="score-cards">
-        <div class="score-card"><div class="label">GPA</div><div class="value">${p.gpa}</div></div>
-        <div class="score-card"><div class="label">学业能力</div><div class="value">${p.academic_score}</div></div>
-        <div class="score-card"><div class="label">科研能力</div><div class="value">${p.research_score}</div></div>
-        <div class="score-card"><div class="label">实践能力</div><div class="value">${p.practice_score}</div></div>
+        <div class="score-card"><div class="label">GPA</div><div class="value">${p.gpa}</div><div class="hint">4.0 制</div></div>
+        <div class="score-card"><div class="label">学业能力</div><div class="value">${rates.academic}</div><div class="hint">得分率(%) · 原始 ${p.academic_score}/25</div></div>
+        <div class="score-card"><div class="label">科研能力</div><div class="value">${rates.research}</div><div class="hint">得分率(%) · 原始 ${p.research_score}/100</div></div>
+        <div class="score-card"><div class="label">实践能力</div><div class="value">${rates.practice}</div><div class="hint">得分率(%) · 原始 ${p.practice_score}/100</div></div>
+        <div class="score-card"><div class="label">综合总分</div><div class="value">${p.total_score}</div><div class="hint">归一加权 · 满分 100</div></div>
       </div>
       <div id="radar"></div>
     </div>
     <div class="card">
       <div class="card-title">职业发展推荐</div>
       <div id="careerRec"></div>
+      <div id="careerHistory"></div>
     </div>`;
   const chart = makeChart('radar');
   if (chart) chart.setOption({
+    tooltip: { formatter: (x) => {
+      const v = x.value || [];
+      return `学业 ${v[0]}%　科研 ${v[1]}%　实践 ${v[2]}%`;
+    } },
     radar: { indicator: [{ name: '学业成绩', max: 100 }, { name: '科研项目', max: 100 }, { name: '实践经历', max: 100 }] },
-    series: [{ type: 'radar', data: [{ value: [p.academic_score, p.research_score, p.practice_score], name: '能力得分', areaStyle: { color: 'rgba(26,115,232,0.3)' }, lineStyle: { color: '#1a73e8' } }] }]
+    series: [{ type: 'radar', data: [{ value: [rates.academic, rates.research, rates.practice], name: '能力得分', areaStyle: { color: 'rgba(26,115,232,0.3)' }, lineStyle: { color: '#1a73e8' } }] }]
   });
   const recRes = await api('/api/portrait/career/' + sid);
-  document.getElementById('careerRec').innerHTML = recRes.data.map(r => `
-    <div class="rec-item"><div class="title">${r.direction}（推荐度：${r.score}分）</div><div class="reason">${r.reason}</div></div>`).join('');
+  const rec = recRes.data || { items: [], batch_at: null, total_score: null };
+  const batchText = rec.batch_at
+    ? new Date(rec.batch_at).toLocaleString('zh-CN')
+    : '实时计算（该生尚未生成过历史记录）';
+  document.getElementById('careerRec').innerHTML =
+    `<div class="rec-meta">生成时间：${batchText}　画像总分：${rec.total_score ?? '-'}</div>
+     ${(rec.items || []).map(r => `
+      <div class="rec-item"><div class="title">${r.direction}（推荐度：${r.score}分）</div><div class="reason">${r.reason}</div></div>`).join('')}`;
+
+  // 历史推荐（最多 5 批）
+  const histRes = await api('/api/portrait/career-history/' + sid);
+  const histBox = document.getElementById('careerHistory');
+  const batches = histRes.code === 200 ? histRes.data : [];
+  if (batches.length > 1) {
+    histBox.innerHTML = `<div class="history-title">历史推荐（${batches.length - 1} 次）</div>` +
+      batches.slice(1).map(b => `
+        <div class="history-batch">
+          <div class="rec-meta">${new Date(b.batch_at).toLocaleString('zh-CN')}　总分 ${b.total_score}</div>
+          ${b.items.map(r => `<div class="history-item">${r.direction} · ${r.score} 分</div>`).join('')}
+        </div>`).join('');
+  } else {
+    histBox.innerHTML = '';
+  }
 }
 
 document.getElementById('searchInput').oninput = (e) => loadStudents(e.target.value);
@@ -971,6 +1304,9 @@ function makeChart(elOrId) {
     return null;
   }
   const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+  // 同一个容器重复渲染（筛选后重绘）时先释放旧实例，否则会画到已被清空的画布上
+  const old = echarts.getInstanceByDom(el);
+  if (old) old.dispose();
   const chart = echarts.init(el);
   // 容器尺寸在页面切换后可能变化，延迟校正一次
   setTimeout(() => chart.resize(), 100);
@@ -979,10 +1315,59 @@ function makeChart(elOrId) {
 }
 
 // ========== 数据看板 ==========
+let dashFiltersLoaded = false;
+
+// 加载看板的筛选项（学院 / 专业 / 年级 / 学期）
+async function loadDashFilters() {
+  const res = await api('/api/stats/options');
+  if (res.code !== 200) return;
+  const { colleges, majors, grades, semesters } = res.data;
+
+  const keep = (id, html) => {
+    const el = document.getElementById(id);
+    const cur = el.value;
+    el.innerHTML = html;
+    if (cur) el.value = cur;
+  };
+
+  keep('dashCollege', '<option value="">全部学院</option>' +
+    colleges.map((c) => `<option value="${c}">${c}</option>`).join(''));
+  keep('dashMajor', '<option value="">全部专业</option>' +
+    majors.map((m) => `<option value="${m}">${m}</option>`).join(''));
+  keep('dashGrade', '<option value="">全部年级</option>' +
+    grades.map((g) => `<option value="${g}">${g} 级</option>`).join(''));
+  keep('dashSemester', '<option value="">全部学期</option>' +
+    semesters.map((s) => `<option value="${s}">${s}</option>`).join(''));
+  dashFiltersLoaded = true;
+}
+
+function resetDashboardFilters() {
+  ['dashCollege', 'dashMajor', 'dashGrade', 'dashSemester'].forEach((id) => {
+    document.getElementById(id).value = '';
+  });
+  loadDashboard();
+}
+
 async function loadDashboard() {
-  const res = await api('/api/stats');
+  if (!dashFiltersLoaded) await loadDashFilters();
+
+  const params = new URLSearchParams();
+  const college = document.getElementById('dashCollege').value;
+  const major = document.getElementById('dashMajor').value;
+  const grade = document.getElementById('dashGrade').value;
+  const semester = document.getElementById('dashSemester').value;
+  if (college) params.set('college', college);
+  if (major) params.set('major', major);
+  if (grade) params.set('grade', grade);
+  if (semester) params.set('semester', semester);
+
+  const qs = params.toString();
+  const res = await api('/api/stats' + (qs ? '?' + qs : ''));
   if (res.code !== 200) return toast('统计数据加载失败', 'error');
   const d = res.data;
+
+  const scope = [college, major, grade ? grade + ' 级' : '', semester].filter(Boolean).join(' / ');
+  document.getElementById('dashScopeHint').textContent = scope ? '当前范围：' + scope : '';
 
   // 统计卡片
   document.getElementById('statCards').innerHTML = `
@@ -995,10 +1380,11 @@ async function loadDashboard() {
   // 总分分布饼图
   const sd = d.score_distribution;
   const pieData = [
-    { name: '0-5分', value: Number(sd.range_0_5) || 0 },
-    { name: '5-10分', value: Number(sd.range_5_10) || 0 },
-    { name: '10-15分', value: Number(sd.range_10_15) || 0 },
-    { name: '15分以上', value: Number(sd.range_15_plus) || 0 },
+    { name: '0-25分', value: Number(sd.range_0_25) || 0 },
+    { name: '25-30分', value: Number(sd.range_25_30) || 0 },
+    { name: '30-35分', value: Number(sd.range_30_35) || 0 },
+    { name: '35-40分', value: Number(sd.range_35_40) || 0 },
+    { name: '40分以上', value: Number(sd.range_40_100) || 0 },
   ];
   const hasPieData = pieData.some(x => x.value > 0);
   const distEl = document.getElementById('distChart');
@@ -1032,30 +1418,33 @@ async function loadDashboard() {
       avg.setOption({
         tooltip: { trigger: 'axis' },
         grid: { left: 60, right: 30, top: 40, bottom: 40 },
-        xAxis: { type: 'category', data: ['学业分', '科研分', '实践分'] },
-        yAxis: { type: 'value', name: '平均分' },
+        xAxis: { type: 'category', data: ['学业能力', '科研能力', '实践能力'] },
+        yAxis: { type: 'value', name: '平均得分率(%)', max: 100 },
         series: [{
           type: 'bar',
           barWidth: 60,
           itemStyle: { color: '#1a73e8', borderRadius: [6, 6, 0, 0] },
           label: { show: true, position: 'top' },
           data: [
-            Number(a.avg_academic) || 0,
-            Number(a.avg_research) || 0,
-            Number(a.avg_practice) || 0
+            Number(a.avg_academic_rate) || 0,
+            Number(a.avg_research_rate) || 0,
+            Number(a.avg_practice_rate) || 0
           ]
         }]
       });
     }
   }
 
-  // TOP5 排行
+  // TOP5 排行（三个维度用得分率，避免 25/100 两套量纲混在同一行）
   document.getElementById('topTable').innerHTML = d.top_students.length
-    ? d.top_students.map((s, i) => `<tr>
+    ? d.top_students.map((s, i) => {
+        const rt = s.rates || { academic: 0, research: 0, practice: 0 };
+        return `<tr>
         <td>${i + 1}</td><td>${s.student_id}</td><td>${s.name}</td>
-        <td>${s.academic_score}</td><td>${s.research_score}</td><td>${s.practice_score}</td>
+        <td>${rt.academic}%</td><td>${rt.research}%</td><td>${rt.practice}%</td>
         <td><strong>${s.total_score}</strong></td>
-      </tr>`).join('')
+      </tr>`;
+      }).join('')
     : '<tr><td colspan="7" style="text-align:center;color:#999">暂无画像数据</td></tr>';
 }
 
@@ -1075,6 +1464,8 @@ async function doCompare() {
   }
 
   const pa = ra.data, pb = rb.data;
+  const raRate = pa.rates || { academic: 0, research: 0, practice: 0 };
+  const rbRate = pb.rates || { academic: 0, research: 0, practice: 0 };
   box.innerHTML = `
     <div class="card">
       <div class="card-title">${pa.name} vs ${pb.name}</div>
@@ -1083,9 +1474,9 @@ async function doCompare() {
         <thead><tr><th>维度</th><th>${pa.name}</th><th>${pb.name}</th><th>差值</th></tr></thead>
         <tbody>
           <tr><td>GPA</td><td>${pa.gpa}</td><td>${pb.gpa}</td><td>${diff(pa.gpa, pb.gpa)}</td></tr>
-          <tr><td>学业分</td><td>${pa.academic_score}</td><td>${pb.academic_score}</td><td>${diff(pa.academic_score, pb.academic_score)}</td></tr>
-          <tr><td>科研分</td><td>${pa.research_score}</td><td>${pb.research_score}</td><td>${diff(pa.research_score, pb.research_score)}</td></tr>
-          <tr><td>实践分</td><td>${pa.practice_score}</td><td>${pb.practice_score}</td><td>${diff(pa.practice_score, pb.practice_score)}</td></tr>
+          <tr><td>学业能力（得分率%）</td><td>${raRate.academic}</td><td>${rbRate.academic}</td><td>${diff(raRate.academic, rbRate.academic)}</td></tr>
+          <tr><td>科研能力（得分率%）</td><td>${raRate.research}</td><td>${rbRate.research}</td><td>${diff(raRate.research, rbRate.research)}</td></tr>
+          <tr><td>实践能力（得分率%）</td><td>${raRate.practice}</td><td>${rbRate.practice}</td><td>${diff(raRate.practice, rbRate.practice)}</td></tr>
           <tr><td><strong>综合总分</strong></td><td><strong>${pa.total_score}</strong></td><td><strong>${pb.total_score}</strong></td><td>${diff(pa.total_score, pb.total_score)}</td></tr>
         </tbody>
       </table>
@@ -1104,9 +1495,9 @@ async function doCompare() {
     series: [{
       type: 'radar',
       data: [
-        { value: [pa.academic_score, pa.research_score, pa.practice_score], name: pa.name,
+        { value: [raRate.academic, raRate.research, raRate.practice], name: pa.name,
           areaStyle: { color: 'rgba(26,115,232,0.2)' }, lineStyle: { color: '#1a73e8' }, itemStyle: { color: '#1a73e8' } },
-        { value: [pb.academic_score, pb.research_score, pb.practice_score], name: pb.name,
+        { value: [rbRate.academic, rbRate.research, rbRate.practice], name: pb.name,
           areaStyle: { color: 'rgba(82,196,26,0.2)' }, lineStyle: { color: '#52c41a' }, itemStyle: { color: '#52c41a' } }
       ]
     }]
@@ -1117,6 +1508,250 @@ function diff(x, y) {
   const d = (Number(x) || 0) - (Number(y) || 0);
   if (d === 0) return '持平';
   return d > 0 ? `+${d.toFixed(2)}` : d.toFixed(2);
+}
+
+// ========== 用户管理（仅管理员） ==========
+async function loadUsers() {
+  const res = await api('/api/users');
+  if (res.code !== 200) return toast(res.message || '用户列表加载失败', 'error');
+
+  const users = res.data || [];
+  document.getElementById('userCount').textContent = users.length + ' 个账号';
+
+  const roleOptions = (cur) => ['admin', 'teacher', 'student']
+    .map(r => `<option value="${r}"${r === cur ? ' selected' : ''}>${ROLE_LABEL[r]}</option>`).join('');
+
+  const tbody = document.getElementById('userTable');
+  tbody.innerHTML = users.length === 0
+    ? '<tr><td colspan="6" class="empty-cell">暂无账号</td></tr>'
+    : users.map(u => `<tr>
+        <td>${u.username}</td>
+        <td><select onchange="changeUserRole(${u.id}, this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid #dcdfe6;font-family:inherit">${roleOptions(u.role)}</select></td>
+        <td>${u.status === 1 ? '<span style="color:#16a34a">启用</span>' : '<span style="color:#dc2626">禁用</span>'}</td>
+        <td>${u.student_id ? u.student_id + (u.student_name ? ' ' + u.student_name : '') : '-'}</td>
+        <td>${(u.created_at || '').toString().slice(0, 10)}</td>
+        <td>
+          <button class="btn btn-default btn-mini" onclick="toggleUserStatus(${u.id}, ${u.status})">${u.status === 1 ? '禁用' : '启用'}</button>
+          <button class="btn btn-default btn-mini" onclick="resetUserPwd(${u.id}, '${u.username}')">重置密码</button>
+          <button class="btn btn-danger btn-mini" onclick="deleteUser(${u.id}, '${u.username}')">删除</button>
+        </td>
+      </tr>`).join('');
+}
+
+function toggleAddUser() {
+  const form = document.getElementById('addUserForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+async function createUser() {
+  const data = {
+    username: document.getElementById('newUsername').value.trim(),
+    password: document.getElementById('newUserPwd').value,
+    role: document.getElementById('newUserRole').value,
+    student_id: document.getElementById('newUserSid').value.trim(),
+  };
+  if (!data.username) return toast('请填写用户名', 'error');
+  if (data.password.length < 6) return toast('密码至少6位', 'error');
+
+  const res = await api('/api/users', 'POST', data);
+  if (res.code === 200) {
+    toast('用户已创建');
+    document.getElementById('newUsername').value = '';
+    document.getElementById('newUserPwd').value = '';
+    document.getElementById('newUserSid').value = '';
+    toggleAddUser();
+    loadUsers();
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function changeUserRole(id, role) {
+  const res = await api('/api/users/' + id, 'PUT', { role });
+  if (res.code === 200) {
+    toast('角色已更新');
+    loadUsers();
+  } else {
+    toast(res.message, 'error');
+    loadUsers(); // 失败时回显真实角色
+  }
+}
+
+async function toggleUserStatus(id, status) {
+  const next = status === 1 ? 0 : 1;
+  const res = await api('/api/users/' + id, 'PUT', { status: next });
+  if (res.code === 200) {
+    toast(next === 1 ? '已启用' : '已禁用');
+    loadUsers();
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function resetUserPwd(id, username) {
+  const newPassword = prompt(`为「${username}」设置新密码（至少 6 位）`);
+  if (!newPassword) return;
+  if (newPassword.length < 6) return toast('新密码至少6位', 'error');
+
+  const res = await api('/api/users/' + id + '/reset-password', 'POST', { newPassword });
+  toast(res.code === 200 ? '密码已重置' : res.message, res.code === 200 ? 'success' : 'error');
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`确认删除账号「${username}」？`)) return;
+  const res = await api('/api/users/' + id, 'DELETE');
+  if (res.code === 200) {
+    toast('账号已删除');
+    loadUsers();
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+// ========== 我的画像（学生账号专用） ==========
+let myChart = null;
+
+async function loadMyProfile() {
+  const res = await api('/api/me/profile');
+  const body = document.getElementById('myProfileBody');
+
+  if (res.code !== 200) {
+    body.innerHTML = `<div class="empty">${res.message || '加载失败'}</div>`;
+    return;
+  }
+
+  const { student, portrait, rates, career, career_batch_at } = res.data;
+  document.getElementById('myProfileTitle').textContent = `${student.name} - 我的能力画像`;
+
+  if (!portrait) {
+    body.innerHTML = `<div class="empty">${student.student_id} ${student.name}（${student.college} ${student.major}）还没有生成画像，请联系管理员生成</div>`;
+  } else {
+    const rt = rates || { academic: 0, research: 0, practice: 0 };
+    body.innerHTML = `
+      <div class="empty" style="text-align:left;padding:0 0 14px">${student.student_id}　${student.name}　${student.college}　${student.major}　${student.grade} 级</div>
+      <div class="score-cards">
+        <div class="score-card"><div class="label">GPA</div><div class="value">${portrait.gpa}</div><div class="hint">4.0 制</div></div>
+        <div class="score-card"><div class="label">学业能力</div><div class="value">${rt.academic}</div><div class="hint">得分率(%) · 原始 ${portrait.academic_score}/25</div></div>
+        <div class="score-card"><div class="label">科研能力</div><div class="value">${rt.research}</div><div class="hint">得分率(%) · 原始 ${portrait.research_score}/100</div></div>
+        <div class="score-card"><div class="label">实践能力</div><div class="value">${rt.practice}</div><div class="hint">得分率(%) · 原始 ${portrait.practice_score}/100</div></div>
+        <div class="score-card"><div class="label">综合总分</div><div class="value">${portrait.total_score}</div><div class="hint">归一加权 · 满分 100</div></div>
+      </div>
+      <div id="myRadar" style="width:100%;height:340px"></div>
+      <div class="card-title" style="margin-top:10px">职业发展推荐</div>
+      <div class="rec-meta">${career_batch_at ? '生成时间：' + new Date(career_batch_at).toLocaleString('zh-CN') : '实时计算（尚未生成历史记录）'}</div>
+      <div>${(career || []).map(r => `<div class="rec-item"><div class="title">${r.direction}（推荐度：${r.score}分）</div><div class="reason">${r.reason}</div></div>`).join('')}</div>`;
+
+    if (myChart) { myChart.dispose(); myChart = null; }
+    myChart = makeChart('myRadar');
+    if (myChart) myChart.setOption({
+      radar: { indicator: [{ name: '学业成绩', max: 100 }, { name: '科研项目', max: 100 }, { name: '实践经历', max: 100 }] },
+      series: [{ type: 'radar', data: [{ value: [rt.academic, rt.research, rt.practice], name: '我的得分率', areaStyle: { color: 'rgba(26,115,232,0.3)' }, lineStyle: { color: '#1a73e8' } }] }]
+    });
+  }
+
+  // 明细记录
+  const recRes = await api('/api/me/records');
+  const box = document.getElementById('myRecords');
+  if (recRes.code !== 200) {
+    box.innerHTML = `<div class="empty">${recRes.message || '明细加载失败'}</div>`;
+    return;
+  }
+  const { academic, research, practice } = recRes.data;
+  box.innerHTML = `
+    <div class="record-title">成绩记录（${academic.length} 条）</div>
+    ${academic.length ? `<table><thead><tr><th>课程</th><th>学分</th><th>成绩</th><th>学期</th></tr></thead><tbody>
+      ${academic.map(r => `<tr><td>${r.course_name}</td><td>${Number(r.credit)}</td><td>${Number(r.score)}</td><td>${r.semester || '-'}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">暂无成绩记录</div>'}
+    <div class="record-title">科研项目（${research.length} 项）</div>
+    ${research.length ? `<table><thead><tr><th>项目名称</th><th>角色</th><th>级别</th><th>起止时间</th><th>成果</th></tr></thead><tbody>
+      ${research.map(r => `<tr><td>${r.project_name}</td><td>${r.role || '-'}</td><td>${r.level || '-'}</td>
+        <td>${(r.start_date || '').toString().slice(0, 10)} ~ ${(r.end_date || '').toString().slice(0, 10)}</td><td>${r.result || '-'}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">暂无科研项目</div>'}
+    <div class="record-title">实践经历（${practice.length} 项）</div>
+    ${practice.length ? `<table><thead><tr><th>活动名称</th><th>类型</th><th>时长(小时)</th><th>描述</th></tr></thead><tbody>
+      ${practice.map(r => `<tr><td>${r.activity_name}</td><td>${r.type || '-'}</td><td>${r.hours || 0}</td><td>${r.description || '-'}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">暂无实践经历</div>'}`;
+}
+
+// ========== 系统设置（仅管理员） ==========
+async function loadSettings() {
+  const res = await api('/api/config/portrait');
+  if (res.code !== 200) return toast(res.message || '配置加载失败', 'error');
+
+  const c = res.data.config;
+  document.getElementById('cfgWeightAcademic').value = c.weights.academic;
+  document.getElementById('cfgWeightResearch').value = c.weights.research;
+  document.getElementById('cfgWeightPractice').value = c.weights.practice;
+  document.getElementById('cfgLimitAcademic').value = c.limits.academicScore;
+  document.getElementById('cfgLimitResearch').value = c.limits.researchScore;
+  document.getElementById('cfgLimitPractice').value = c.limits.practiceScore;
+  document.getElementById('cfgAcademicFactor').value = c.academic.factor;
+  document.getElementById('cfgHoursPerPoint').value = c.practice.hours_per_point;
+  document.getElementById('cfgPointNational').value = c.research_points['国家级'];
+  document.getElementById('cfgPointProvincial').value = c.research_points['省级'];
+  document.getElementById('cfgPointSchool').value = c.research_points['校级'];
+}
+
+function collectSettings() {
+  const num = (id) => Number(document.getElementById(id).value);
+  return {
+    weights: {
+      academic: num('cfgWeightAcademic'),
+      research: num('cfgWeightResearch'),
+      practice: num('cfgWeightPractice'),
+    },
+    limits: {
+      academicScore: num('cfgLimitAcademic'),
+      researchScore: num('cfgLimitResearch'),
+      practiceScore: num('cfgLimitPractice'),
+    },
+    academic: { factor: num('cfgAcademicFactor') },
+    practice: { hours_per_point: num('cfgHoursPerPoint') },
+    research_points: {
+      '国家级': num('cfgPointNational'),
+      '省级': num('cfgPointProvincial'),
+      '校级': num('cfgPointSchool'),
+    },
+  };
+}
+
+async function saveSettings() {
+  const body = collectSettings();
+  const sum = body.weights.academic + body.weights.research + body.weights.practice;
+  if (Math.abs(sum - 1) > 0.001) {
+    return toast(`三项权重之和必须为 1，当前为 ${sum.toFixed(2)}`, 'error');
+  }
+
+  const res = await api('/api/config/portrait', 'PUT', body);
+  if (res.code === 200) {
+    toast('配置已保存，点"按当前配置重算全部"后画像才会更新');
+    loadSettings();
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function resetSettings() {
+  if (!confirm('恢复默认权重与计分规则？')) return;
+  const res = await api('/api/config/portrait/reset', 'POST');
+  if (res.code === 200) {
+    toast('已恢复默认配置');
+    loadSettings();
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function recalcAll() {
+  if (!confirm('按当前配置重算全部学生画像？数据量大时需要几秒。')) return;
+  toast('正在重算，请稍候...');
+  const res = await api('/api/config/portrait/recalculate-all', 'POST');
+  if (res.code === 200) {
+    toast(res.message);
+    loadDashboard && (dashFiltersLoaded = false);
+  } else {
+    toast(res.message, 'error');
+  }
 }
 
 // ========== 导出 ==========
@@ -1140,8 +1775,6 @@ async function exportCsv(url, name) {
     toast('导出失败', 'error');
   }
 }
-
-loadStudents();
 </script>
 </body>
 </html>

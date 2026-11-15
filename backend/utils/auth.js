@@ -21,9 +21,26 @@ function authRequired(req, res, next) {
   }
 }
 
+// 角色限制：必须放在 authRequired 之后使用
+// 用法：router.get('/', authRequired, roleRequired('admin', 'teacher'), handler)
+function roleRequired(...roles) {
+  return (req, res, next) => {
+    const role = req.user && req.user.role;
+    if (!role || !roles.includes(role)) {
+      return fail(res, 403, 403, '当前账号无权访问该功能');
+    }
+    next();
+  };
+}
+
+// 管理员专用
+const adminOnly = roleRequired('admin');
+// 管理员和教师（用于只读、录入、统计类接口）
+const staffOnly = roleRequired('admin', 'teacher');
+
 // 签发 token（有效期 8 小时）
 function signToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
 }
 
-module.exports = { authRequired, signToken, JWT_SECRET };
+module.exports = { authRequired, roleRequired, adminOnly, staffOnly, signToken, JWT_SECRET };

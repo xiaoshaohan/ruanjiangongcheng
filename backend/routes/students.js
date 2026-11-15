@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
+const { adminOnly } = require('../utils/auth');
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
 }));
 
 // 删除学生（事务级联清理成绩/科研/实践/画像，避免孤儿数据）
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', adminOnly, asyncHandler(async (req, res) => {
   const sid = req.params.id;
 
   const [exists] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [sid]);

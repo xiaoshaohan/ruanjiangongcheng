@@ -2,7 +2,7 @@
 // 运行：npm test
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { computePortrait, computeCareerRecommendation } = require('../utils/portrait');
+const { computePortrait, computeCareerRecommendation, toRates } = require('../utils/portrait');
 
 // 构造一个假的数据库连接，按表名返回预设数据，避免测试依赖真实数据库
 function mockConn({ academic = [], research = [], practice = [] } = {}) {
@@ -114,17 +114,17 @@ describe('画像计算 - 实践维度', () => {
 });
 
 describe('画像计算 - 综合总分', () => {
-  test('总分 = 学业×0.4 + 科研×0.3 + 实践×0.3', async () => {
+  test('总分 = 学业率×0.4 + 科研率×0.3 + 实践率×0.3（先归一再加权）', async () => {
     const r = await computePortrait('S1', mockConn({
-      academic: [{ credit: 4, score: 80 }], // 学业 20
-      research: [{ level: '国家级' }],       // 科研 10
-      practice: [{ hours: 100 }],            // 实践 10
+      academic: [{ credit: 4, score: 80 }], // 学业 20 → 得分率 80%
+      research: [{ level: '国家级' }],       // 科研 10 → 得分率 10%
+      practice: [{ hours: 100 }],            // 实践 10 → 得分率 10%
     }));
-    // 20*0.4 + 10*0.3 + 10*0.3 = 8 + 3 + 3 = 14
+    // 80*0.4 + 10*0.3 + 10*0.3 = 32 + 3 + 3 = 38
     assert.strictEqual(r.academic_score, 20);
     assert.strictEqual(r.research_score, 10);
     assert.strictEqual(r.practice_score, 10);
-    assert.strictEqual(r.total_score, 14);
+    assert.strictEqual(r.total_score, 38);
   });
 
   test('结果统一保留两位小数', async () => {
@@ -135,8 +135,18 @@ describe('画像计算 - 综合总分', () => {
     }));
     assert.strictEqual(r.gpa, 3); // (80-89 档 3.0×3)/3 = 3
     assert.strictEqual(r.academic_score, 21.75); // 87×0.25
-    // 21.75×0.4 + 3×0.3 + 2.5×0.3 = 8.7 + 0.9 + 0.75 = 10.35
-    assert.strictEqual(r.total_score, 10.35);
+    // 学业率 21.75/25=87%，科研率 3%，实践率 2.5%
+    // 87×0.4 + 3×0.3 + 2.5×0.3 = 34.8 + 0.9 + 0.75 = 36.45
+    assert.strictEqual(r.total_score, 36.45);
+  });
+
+  test('总分上限为 100（各维满分时）', async () => {
+    const ports = await computePortrait('S1', mockConn({
+      academic: [{ credit: 4, score: 100 }], // 25 → 100%
+      research: Array.from({ length: 10 }, () => ({ level: '国家级' })), // 100 → 100%
+      practice: [{ hours: 1000 }], // 100 → 100%
+    }));
+    assert.strictEqual(ports.total_score, 100);
   });
 });
 
@@ -177,5 +187,28 @@ describe('职业推荐', () => {
     for (let i = 1; i < recs.length; i++) {
       assert.ok(recs[i - 1].score >= recs[i].score, '推荐度应降序排列');
     }
+  });
+});
+
+describe('维度归一化（toRates）', () => {
+  test('各维按自身标准分换算成 0-100 得分率', () => {
+    const r = toRates({ academic_score: 21.33, research_score: 3, practice_score: 0 });
+    assert.strictEqual(r.academic, 85.32); // 21.33 / 25 × 100
+    assert.strictEqual(r.research, 3);     // 3 / 100 × 100
+    assert.strictEqual(r.practice, 0);
+  });
+
+  test('缺字段时按 0 处理，不出现 NaN', () => {
+    const r = toRates({});
+    assert.strictEqual(r.academic, 0);
+    assert.strictEqual(r.research, 0);
+    assert.strictEqual(r.practice, 0);
+  });
+
+  test('满分时得分率为 100', () => {
+    const r = toRates({ academic_score: 25, research_score: 100, practice_score: 100 });
+    assert.strictEqual(r.academic, 100);
+    assert.strictEqual(r.research, 100);
+    assert.strictEqual(r.practice, 100);
   });
 });

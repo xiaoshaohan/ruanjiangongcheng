@@ -17,6 +17,9 @@ const connection = {
     if (sql.includes('SELECT student_id FROM student')) return [args[0] === student.student_id ? [student] : []];
     if (sql.includes('FROM academic_record')) return [records];
     if (sql.includes('FROM research_project') || sql.includes('FROM practice_activity')) return [[]];
+    // 画像计算后会把推荐写入历史表，这里只需要让写入与批次查询通过
+    if (sql.includes('INSERT INTO career_recommendation')) return [{}];
+    if (sql.includes('DISTINCT batch_at FROM career_recommendation')) return [[]];
     if (sql.includes('INSERT INTO ability_profile')) {
       savedProfile = { student_id: args[0], gpa: args[1], academic_score: args[2], research_score: args[3], practice_score: args[4], total_score: args[5], name: student.name };
       return [{}];
@@ -28,6 +31,8 @@ const pool = {
   async getConnection() { return connection; },
   async query(sql, args) {
     if (sql.includes('SELECT * FROM sys_user')) return [args[0] === 'admin' ? [{ id: 1, username: 'admin', role: 'admin', password_hash: passwordHash }] : []];
+    // 配置表返回空，走默认计分规则
+    if (sql.includes('FROM portrait_config')) return [[]];
     if (sql.includes('INSERT INTO academic_record')) {
       records.push({ student_id: args[0], course_name: args[1], credit: args[2], score: args[3], semester: args[4] });
       return [{}];
@@ -90,10 +95,13 @@ test('录入两门成绩后计算并查询画像', async () => {
   assert.equal(result.status, 200);
   assert.equal(result.body.data.gpa, 3.5);
   assert.equal(result.body.data.academic_score, 22.5);
-  assert.equal(result.body.data.total_score, 9);
+  // 归一化口径：学业率 22.5/25 = 90%，科研/实践为 0 → 总分 = 90×0.4 = 36
+  assert.equal(result.body.data.total_score, 36);
   const saved = await request('/api/portrait/TEST001');
   assert.equal(saved.status, 200);
   assert.equal(saved.body.data.academic_score, 22.5);
+  // 查询接口附带得分率，供前端统一展示
+  assert.equal(saved.body.data.rates.academic, 90);
 });
 
 test('不存在的学生不能计算画像', async () => {

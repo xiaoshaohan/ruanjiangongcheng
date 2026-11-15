@@ -1,12 +1,17 @@
 // 学生画像计算核心逻辑
+const { DEFAULT_CONFIG } = require('./portraitConfig');
 
-// 常量（可按需调整）
+// 默认常量，保留导出以兼容已有调用与测试
 const LIMITS = {
-  researchScore: 100, // 科研分封顶
-  practiceScore: 100, // 实践分封顶
+  academicScore: DEFAULT_CONFIG.limits.academicScore,
+  researchScore: DEFAULT_CONFIG.limits.researchScore,
+  practiceScore: DEFAULT_CONFIG.limits.practiceScore,
 };
-const RESEARCH_POINTS = { 国家级: 10, 省级: 6, 校级: 3 };
-const WEIGHTS = { academic: 0.4, research: 0.3, practice: 0.3 };
+const RESEARCH_POINTS = DEFAULT_CONFIG.research_points;
+const WEIGHTS = DEFAULT_CONFIG.weights;
+
+// 单维度得分率（0-100）：得分 / 标准分 × 100，用于雷达图与总分的统一口径
+const rateOf = (score, full) => (full > 0 ? (score / full) * 100 : 0);
 
 // 将满分制的 score（0-100）换算为 4.0 制 GPA。分数越高则绩点越高。
 function scoreToGpa(score) {
@@ -21,7 +26,15 @@ function scoreToGpa(score) {
 const round2 = (n) => (Number.isFinite(n) ? Math.round(n * 100) / 100 : 0);
 
 // 计算学生画像，返回各维度得分。conn 需为 mysql2 连接（池连接或事务连接）。
-async function computePortrait(studentId, conn) {
+// config 不传时使用默认规则，便于单元测试与离线调用。
+async function computePortrait(studentId, conn, config) {
+  const cfg = config || DEFAULT_CONFIG;
+  const limits = cfg.limits;
+  const points = cfg.research_points;
+  const weights = cfg.weights;
+  const academicFactor = cfg.academic.factor;
+  const hoursPerPoint = cfg.practice.hours_per_point;
+
   // 1. 学业成绩 → GPA + 学业分
   const [academicRows] = await conn.query(
     'SELECT credit, score FROM academic_record WHERE student_id = ?',
@@ -43,8 +56,8 @@ async function computePortrait(studentId, conn) {
     }
     if (totalCredit > 0) {
       gpa = totalWeightedGpa / totalCredit;
-      // 学业分：平均分 × 0.25（满分 100）
-      academicScore = (totalWeightedScore / totalCredit) * 0.25;
+      // 学业分：加权平均分 × 换算系数
+      academicScore = (totalWeightedScore / totalCredit) * academicFactor;
     }
   }
 
@@ -55,24 +68,29 @@ async function computePortrait(studentId, conn) {
   );
   let researchScore = 0;
   for (const row of researchRows) {
-    researchScore += RESEARCH_POINTS[row.level] || 0;
+    researchScore += points[row.level] || 0;
   }
-  researchScore = Math.min(researchScore, LIMITS.researchScore);
+  researchScore = Math.min(researchScore, limits.researchScore);
 
-  // 3. 实践经历 → 实践分（每 10 小时 = 1 分）
+  // 3. 实践经历 → 实践分（按小时换算）
   const [practiceRows] = await conn.query(
     'SELECT hours FROM practice_activity WHERE student_id = ?',
     [studentId]
   );
   let practiceScore = 0;
   for (const row of practiceRows) {
-    practiceScore += (Number(row.hours) || 0) / 10;
+    practiceScore += (Number(row.hours) || 0) / hoursPerPoint;
   }
-  practiceScore = Math.min(practiceScore, LIMITS.practiceScore);
+  practiceScore = Math.min(practiceScore, limits.practiceScore);
 
-  // 4. 综合总分：学业 40% + 科研 30% + 实践 30%
-  const totalScore =
-    academicScore * WEIGHTS.academic + researchScore * WEIGHTS.research + practiceScore * WEIGHTS.practice;
+  // 4. 综合总分：先各维归一到得分率（0-100），再按权重加权，上限 100
+  const academicRate = rateOf(academicScore, limits.academicScore);
+  const researchRate = rateOf(researchScore, limits.researchScore);
+  const practiceRate = rateOf(practiceScore, limits.practiceScore);
+  const totalScore = Math.min(
+    100,
+    academicRate * weights.academic + researchRate * weights.research + practiceRate * weights.practice
+  );
 
   return {
     gpa: round2(gpa),
@@ -83,9 +101,19 @@ async function computePortrait(studentId, conn) {
   };
 }
 
+// 把一条画像换算成三个维度的得分率（0-100），供雷达图、对比表统一展示
+function toRates(profile, limits) {
+  const l = limits || LIMITS;
+  return {
+    academic: round2(rateOf(Number(profile.academic_score) || 0, l.academicScore)),
+    research: round2(rateOf(Number(profile.research_score) || 0, l.researchScore)),
+    practice: round2(rateOf(Number(profile.practice_score) || 0, l.practiceScore)),
+  };
+}
+
 // 根据画像得分生成职业推荐
 function computeCareerRecommendation(portrait) {
-  const { academic_score, research_score, practice_score, gpa } = portrait;
+  const { academic_score, research_score, practice_score } = portrait;
   const recommendations = [];
 
   // 学术方向：学业强 + 科研强
@@ -120,4 +148,7 @@ function computeCareerRecommendation(portrait) {
   return recommendations;
 }
 
-module.exports = { computePortrait, computeCareerRecommendation };
+module.exports = {
+  computePortrait, computeCareerRecommendation, toRates,
+  LIMITS, RESEARCH_POINTS, WEIGHTS,
+};

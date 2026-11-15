@@ -18,6 +18,34 @@ router.post('/', asyncHandler(async (req, res) => {
   ok(res, null, '科研项目录入成功');
 }));
 
+// 修改单条科研项目
+router.put('/:id', asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return fail(res, 400, 400, '记录编号不合法');
+
+  const { project_name, role, level, start_date, end_date, result } = req.body;
+  if (!project_name) return fail(res, 400, 400, '项目名不能为空');
+
+  const [exists] = await pool.query('SELECT id FROM research_project WHERE id = ?', [id]);
+  if (exists.length === 0) return fail(res, 404, 404, '科研项目不存在');
+
+  await pool.query(
+    'UPDATE research_project SET project_name = ?, role = ?, level = ?, start_date = ?, end_date = ?, result = ? WHERE id = ?',
+    [project_name, role || null, level || null, start_date || null, end_date || null, result || null, id]
+  );
+  ok(res, null, '科研项目已更新');
+}));
+
+// 删除单条科研项目
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return fail(res, 400, 400, '记录编号不合法');
+
+  const [result] = await pool.query('DELETE FROM research_project WHERE id = ?', [id]);
+  if (result.affectedRows === 0) return fail(res, 404, 404, '科研项目不存在');
+  ok(res, null, '科研项目已删除');
+}));
+
 // 查询某学生科研项目
 router.get('/:studentId', asyncHandler(async (req, res) => {
   const [rows] = await pool.query(

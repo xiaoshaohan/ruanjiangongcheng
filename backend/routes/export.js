@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { asyncHandler } = require('../utils/response');
+const { toRates } = require('../utils/portrait');
 
 const router = express.Router();
 
@@ -47,8 +48,16 @@ router.get('/portraits', asyncHandler(async (req, res) => {
      ORDER BY p.total_score DESC`
   );
   const csv = toCsv(
-    ['学号', '姓名', '学院', '专业', 'GPA', '学业分', '科研分', '实践分', '综合总分'],
-    rows.map(r => [r.student_id, r.name, r.college, r.major, r.gpa, r.academic_score, r.research_score, r.practice_score, r.total_score])
+    ['学号', '姓名', '学院', '专业', 'GPA', '学业分', '科研分', '实践分', '学业得分率%', '科研得分率%', '实践得分率%', '综合总分'],
+    rows.map(r => {
+      const rt = toRates(r);
+      return [
+        r.student_id, r.name, r.college, r.major, r.gpa,
+        r.academic_score, r.research_score, r.practice_score,
+        rt.academic, rt.research, rt.practice,
+        r.total_score,
+      ];
+    })
   );
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="portraits.csv"');
