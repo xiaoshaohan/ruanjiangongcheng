@@ -15,6 +15,10 @@ router.post('/', asyncHandler(async (req, res) => {
   if (hoursNum != null && (!Number.isFinite(hoursNum) || hoursNum < 0)) {
     return fail(res, 400, 400, '时长必须是非负数字');
   }
+
+  const [stu] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [student_id]);
+  if (stu.length === 0) return fail(res, 400, 400, '学号不存在，请先添加该学生');
+
   await pool.query(
     'INSERT INTO practice_activity (student_id, activity_name, type, start_date, end_date, hours, description) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [student_id, activity_name, type, start_date, end_date, hoursNum, description]

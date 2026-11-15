@@ -31,6 +31,8 @@ const pool = {
   async getConnection() { return connection; },
   async query(sql, args) {
     if (sql.includes('SELECT * FROM sys_user')) return [args[0] === 'admin' ? [{ id: 1, username: 'admin', role: 'admin', password_hash: passwordHash }] : []];
+    // 录入前会校验学号是否存在
+    if (sql.includes('SELECT student_id FROM student')) return [args[0] === student.student_id ? [student] : []];
     // 配置表返回空，走默认计分规则
     if (sql.includes('FROM portrait_config')) return [[]];
     if (sql.includes('INSERT INTO academic_record')) {

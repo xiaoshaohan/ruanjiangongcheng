@@ -780,6 +780,17 @@ document.querySelectorAll('.menu-item').forEach(item => {
   item.onclick = () => activatePage(item.dataset.page);
 });
 
+// HTML 转义：所有拼进 innerHTML 的用户数据都必须先过这里，防存储型 XSS
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function toast(msg, type = 'success') {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -847,11 +858,11 @@ async function loadStudents(filter = '') {
   list.forEach(s => {
     // 删除学生仅管理员可用，教师只能查看
     const actions = CURRENT_ROLE === 'admin'
-      ? `<button class="btn btn-danger" onclick="delStudent('${s.student_id}')">删除</button>`
+      ? `<button class="btn btn-danger" data-sid="${esc(s.student_id)}" onclick="delStudent(this.dataset.sid)">删除</button>`
       : '<span style="color:#9aa7bd">—</span>';
     tbody.innerHTML += `<tr>
-      <td>${s.student_id}</td><td>${s.name}</td><td>${s.gender === 'M' ? '男' : '女'}</td>
-      <td>${s.college}</td><td>${s.major}</td><td>${s.grade}</td>
+      <td>${esc(s.student_id)}</td><td>${esc(s.name)}</td><td>${s.gender === 'M' ? '男' : '女'}</td>
+      <td>${esc(s.college)}</td><td>${esc(s.major)}</td><td>${esc(s.grade)}</td>
       <td>${actions}</td>
     </tr>`;
   });
@@ -859,7 +870,7 @@ async function loadStudents(filter = '') {
     const sel = document.getElementById(id);
     const cur = sel.value;
     sel.innerHTML = '<option value="">-- 请选择学生 --</option>' +
-      students.map(s => `<option value="${s.student_id}">${s.student_id} ${s.name}</option>`).join('');
+      students.map(s => `<option value="${esc(s.student_id)}">${esc(s.student_id)} ${esc(s.name)}</option>`).join('');
     sel.value = cur;
   });
 }
@@ -877,7 +888,7 @@ function fillFilters() {
   if (collegeSel.dataset.filled !== collegeKey) {
     const prev = collegeSel.value;
     collegeSel.innerHTML = '<option value="">全部学院</option>' +
-      colleges.map(c => `<option value="${c}">${c}</option>`).join('');
+      colleges.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
     collegeSel.value = colleges.includes(prev) ? prev : '';
     collegeSel.dataset.filled = collegeKey;
   }
@@ -891,7 +902,7 @@ function fillFilters() {
   if (majorSel.dataset.filled !== majorKey) {
     const prev = majorSel.value;
     majorSel.innerHTML = '<option value="">全部专业</option>' +
-      majors.map(m => `<option value="${m}">${m}</option>`).join('');
+      majors.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
     majorSel.value = majors.includes(prev) ? prev : '';
     majorSel.dataset.filled = majorKey;
   }
@@ -900,7 +911,7 @@ function fillFilters() {
   if (gradeSel.dataset.filled !== gradeKey) {
     const prev = gradeSel.value;
     gradeSel.innerHTML = '<option value="">全部年级</option>' +
-      grades.map(g => `<option value="${g}">${g} 级</option>`).join('');
+      grades.map(g => `<option value="${esc(g)}">${esc(g)} 级</option>`).join('');
     gradeSel.value = grades.map(String).includes(prev) ? prev : '';
     gradeSel.dataset.filled = gradeKey;
   }
@@ -1043,7 +1054,7 @@ async function loadStudentRecords(sid) {
   // 成绩表
   document.getElementById('academicList').innerHTML = acRows.length
     ? `<table><thead><tr><th>课程</th><th>学分</th><th>成绩</th><th>学期</th><th>操作</th></tr></thead><tbody>
-        ${acRows.map((r) => `<tr><td>${r.course_name}</td><td>${Number(r.credit)}</td><td>${Number(r.score)}</td><td>${r.semester || '-'}</td>
+        ${acRows.map((r) => `<tr><td>${esc(r.course_name)}</td><td>${Number(r.credit)}</td><td>${Number(r.score)}</td><td>${esc(r.semester || '-')}</td>
           <td class="op-cell">
             <button class="btn btn-default btn-mini" onclick="editRecord('academic', ${r.id})">编辑</button>
             <button class="btn btn-danger btn-mini" onclick="delRecord('academic', ${r.id})">删除</button>
@@ -1054,8 +1065,8 @@ async function loadStudentRecords(sid) {
   // 科研表
   document.getElementById('researchList').innerHTML = rsRows.length
     ? `<table><thead><tr><th>项目名称</th><th>角色</th><th>级别</th><th>起止时间</th><th>操作</th></tr></thead><tbody>
-        ${rsRows.map((r) => `<tr><td>${r.project_name}</td><td>${r.role || '-'}</td><td>${r.level || '-'}</td>
-          <td>${(r.start_date || '').toString().slice(0, 10)} ~ ${(r.end_date || '').toString().slice(0, 10)}</td>
+        ${rsRows.map((r) => `<tr><td>${esc(r.project_name)}</td><td>${esc(r.role || '-')}</td><td>${esc(r.level || '-')}</td>
+          <td>${esc((r.start_date || '').toString().slice(0, 10))} ~ ${esc((r.end_date || '').toString().slice(0, 10))}</td>
           <td class="op-cell">
             <button class="btn btn-default btn-mini" onclick="editRecord('research', ${r.id})">编辑</button>
             <button class="btn btn-danger btn-mini" onclick="delRecord('research', ${r.id})">删除</button>
@@ -1066,7 +1077,7 @@ async function loadStudentRecords(sid) {
   // 实践表
   document.getElementById('practiceList').innerHTML = prRows.length
     ? `<table><thead><tr><th>活动名称</th><th>类型</th><th>时长(小时)</th><th>描述</th><th>操作</th></tr></thead><tbody>
-        ${prRows.map((r) => `<tr><td>${r.activity_name}</td><td>${r.type || '-'}</td><td>${r.hours || 0}</td><td>${r.description || '-'}</td>
+        ${prRows.map((r) => `<tr><td>${esc(r.activity_name)}</td><td>${esc(r.type || '-')}</td><td>${r.hours || 0}</td><td>${esc(r.description || '-')}</td>
           <td class="op-cell">
             <button class="btn btn-default btn-mini" onclick="editRecord('practice', ${r.id})">编辑</button>
             <button class="btn btn-danger btn-mini" onclick="delRecord('practice', ${r.id})">删除</button>
@@ -1244,7 +1255,7 @@ async function loadPortrait() {
   const rates = p.rates || { academic: 0, research: 0, practice: 0 };
   box.innerHTML = `
     <div class="card">
-      <div class="card-title">${p.name} - 能力画像</div>
+      <div class="card-title">${esc(p.name)} - 能力画像</div>
       <div class="score-cards">
         <div class="score-card"><div class="label">GPA</div><div class="value">${p.gpa}</div><div class="hint">4.0 制</div></div>
         <div class="score-card"><div class="label">学业能力</div><div class="value">${rates.academic}</div><div class="hint">得分率(%) · 原始 ${p.academic_score}/25</div></div>
@@ -1274,9 +1285,9 @@ async function loadPortrait() {
     ? new Date(rec.batch_at).toLocaleString('zh-CN')
     : '实时计算（该生尚未生成过历史记录）';
   document.getElementById('careerRec').innerHTML =
-    `<div class="rec-meta">生成时间：${batchText}　画像总分：${rec.total_score ?? '-'}</div>
+    `<div class="rec-meta">生成时间：${esc(batchText)}　画像总分：${rec.total_score ?? '-'}</div>
      ${(rec.items || []).map(r => `
-      <div class="rec-item"><div class="title">${r.direction}（推荐度：${r.score}分）</div><div class="reason">${r.reason}</div></div>`).join('')}`;
+      <div class="rec-item"><div class="title">${esc(r.direction)}（推荐度：${esc(r.score)}分）</div><div class="reason">${esc(r.reason)}</div></div>`).join('')}`;
 
   // 历史推荐（最多 5 批）
   const histRes = await api('/api/portrait/career-history/' + sid);
@@ -1287,7 +1298,7 @@ async function loadPortrait() {
       batches.slice(1).map(b => `
         <div class="history-batch">
           <div class="rec-meta">${new Date(b.batch_at).toLocaleString('zh-CN')}　总分 ${b.total_score}</div>
-          ${b.items.map(r => `<div class="history-item">${r.direction} · ${r.score} 分</div>`).join('')}
+          ${b.items.map(r => `<div class="history-item">${esc(r.direction)} · ${esc(r.score)} 分</div>`).join('')}
         </div>`).join('');
   } else {
     histBox.innerHTML = '';
@@ -1440,7 +1451,7 @@ async function loadDashboard() {
     ? d.top_students.map((s, i) => {
         const rt = s.rates || { academic: 0, research: 0, practice: 0 };
         return `<tr>
-        <td>${i + 1}</td><td>${s.student_id}</td><td>${s.name}</td>
+        <td>${i + 1}</td><td>${esc(s.student_id)}</td><td>${esc(s.name)}</td>
         <td>${rt.academic}%</td><td>${rt.research}%</td><td>${rt.practice}%</td>
         <td><strong>${s.total_score}</strong></td>
       </tr>`;
@@ -1466,12 +1477,12 @@ async function doCompare() {
   const pa = ra.data, pb = rb.data;
   const raRate = pa.rates || { academic: 0, research: 0, practice: 0 };
   const rbRate = pb.rates || { academic: 0, research: 0, practice: 0 };
-  box.innerHTML = `
+    box.innerHTML = `
     <div class="card">
-      <div class="card-title">${pa.name} vs ${pb.name}</div>
+      <div class="card-title">${esc(pa.name)} vs ${esc(pb.name)}</div>
       <div id="compareRadar" style="width:100%;height:400px"></div>
       <table style="margin-top:16px">
-        <thead><tr><th>维度</th><th>${pa.name}</th><th>${pb.name}</th><th>差值</th></tr></thead>
+        <thead><tr><th>维度</th><th>${esc(pa.name)}</th><th>${esc(pb.name)}</th><th>差值</th></tr></thead>
         <tbody>
           <tr><td>GPA</td><td>${pa.gpa}</td><td>${pb.gpa}</td><td>${diff(pa.gpa, pb.gpa)}</td></tr>
           <tr><td>学业能力（得分率%）</td><td>${raRate.academic}</td><td>${rbRate.academic}</td><td>${diff(raRate.academic, rbRate.academic)}</td></tr>
@@ -1525,15 +1536,15 @@ async function loadUsers() {
   tbody.innerHTML = users.length === 0
     ? '<tr><td colspan="6" class="empty-cell">暂无账号</td></tr>'
     : users.map(u => `<tr>
-        <td>${u.username}</td>
+        <td>${esc(u.username)}</td>
         <td><select onchange="changeUserRole(${u.id}, this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid #dcdfe6;font-family:inherit">${roleOptions(u.role)}</select></td>
         <td>${u.status === 1 ? '<span style="color:#16a34a">启用</span>' : '<span style="color:#dc2626">禁用</span>'}</td>
-        <td>${u.student_id ? u.student_id + (u.student_name ? ' ' + u.student_name : '') : '-'}</td>
-        <td>${(u.created_at || '').toString().slice(0, 10)}</td>
+        <td>${u.student_id ? esc(u.student_id) + (u.student_name ? ' ' + esc(u.student_name) : '') : '-'}</td>
+        <td>${esc((u.created_at || '').toString().slice(0, 10))}</td>
         <td>
           <button class="btn btn-default btn-mini" onclick="toggleUserStatus(${u.id}, ${u.status})">${u.status === 1 ? '禁用' : '启用'}</button>
-          <button class="btn btn-default btn-mini" onclick="resetUserPwd(${u.id}, '${u.username}')">重置密码</button>
-          <button class="btn btn-danger btn-mini" onclick="deleteUser(${u.id}, '${u.username}')">删除</button>
+          <button class="btn btn-default btn-mini" data-name="${esc(u.username)}" onclick="resetUserPwd(${u.id}, this.dataset.name)">重置密码</button>
+          <button class="btn btn-danger btn-mini" data-name="${esc(u.username)}" onclick="deleteUser(${u.id}, this.dataset.name)">删除</button>
         </td>
       </tr>`).join('');
 }
@@ -1624,11 +1635,11 @@ async function loadMyProfile() {
   document.getElementById('myProfileTitle').textContent = `${student.name} - 我的能力画像`;
 
   if (!portrait) {
-    body.innerHTML = `<div class="empty">${student.student_id} ${student.name}（${student.college} ${student.major}）还没有生成画像，请联系管理员生成</div>`;
+    body.innerHTML = `<div class="empty">${esc(student.student_id)} ${esc(student.name)}（${esc(student.college)} ${esc(student.major)}）还没有生成画像，请联系管理员生成</div>`;
   } else {
     const rt = rates || { academic: 0, research: 0, practice: 0 };
     body.innerHTML = `
-      <div class="empty" style="text-align:left;padding:0 0 14px">${student.student_id}　${student.name}　${student.college}　${student.major}　${student.grade} 级</div>
+      <div class="empty" style="text-align:left;padding:0 0 14px">${esc(student.student_id)}　${esc(student.name)}　${esc(student.college)}　${esc(student.major)}　${esc(student.grade)} 级</div>
       <div class="score-cards">
         <div class="score-card"><div class="label">GPA</div><div class="value">${portrait.gpa}</div><div class="hint">4.0 制</div></div>
         <div class="score-card"><div class="label">学业能力</div><div class="value">${rt.academic}</div><div class="hint">得分率(%) · 原始 ${portrait.academic_score}/25</div></div>
@@ -1639,7 +1650,7 @@ async function loadMyProfile() {
       <div id="myRadar" style="width:100%;height:340px"></div>
       <div class="card-title" style="margin-top:10px">职业发展推荐</div>
       <div class="rec-meta">${career_batch_at ? '生成时间：' + new Date(career_batch_at).toLocaleString('zh-CN') : '实时计算（尚未生成历史记录）'}</div>
-      <div>${(career || []).map(r => `<div class="rec-item"><div class="title">${r.direction}（推荐度：${r.score}分）</div><div class="reason">${r.reason}</div></div>`).join('')}</div>`;
+      <div>${(career || []).map(r => `<div class="rec-item"><div class="title">${esc(r.direction)}（推荐度：${esc(r.score)}分）</div><div class="reason">${esc(r.reason)}</div></div>`).join('')}</div>`;
 
     if (myChart) { myChart.dispose(); myChart = null; }
     myChart = makeChart('myRadar');
@@ -1660,16 +1671,16 @@ async function loadMyProfile() {
   box.innerHTML = `
     <div class="record-title">成绩记录（${academic.length} 条）</div>
     ${academic.length ? `<table><thead><tr><th>课程</th><th>学分</th><th>成绩</th><th>学期</th></tr></thead><tbody>
-      ${academic.map(r => `<tr><td>${r.course_name}</td><td>${Number(r.credit)}</td><td>${Number(r.score)}</td><td>${r.semester || '-'}</td></tr>`).join('')}
+      ${academic.map(r => `<tr><td>${esc(r.course_name)}</td><td>${Number(r.credit)}</td><td>${Number(r.score)}</td><td>${esc(r.semester || '-')}</td></tr>`).join('')}
     </tbody></table>` : '<div class="empty">暂无成绩记录</div>'}
     <div class="record-title">科研项目（${research.length} 项）</div>
     ${research.length ? `<table><thead><tr><th>项目名称</th><th>角色</th><th>级别</th><th>起止时间</th><th>成果</th></tr></thead><tbody>
-      ${research.map(r => `<tr><td>${r.project_name}</td><td>${r.role || '-'}</td><td>${r.level || '-'}</td>
-        <td>${(r.start_date || '').toString().slice(0, 10)} ~ ${(r.end_date || '').toString().slice(0, 10)}</td><td>${r.result || '-'}</td></tr>`).join('')}
+      ${research.map(r => `<tr><td>${esc(r.project_name)}</td><td>${esc(r.role || '-')}</td><td>${esc(r.level || '-')}</td>
+        <td>${esc((r.start_date || '').toString().slice(0, 10))} ~ ${esc((r.end_date || '').toString().slice(0, 10))}</td><td>${esc(r.result || '-')}</td></tr>`).join('')}
     </tbody></table>` : '<div class="empty">暂无科研项目</div>'}
     <div class="record-title">实践经历（${practice.length} 项）</div>
     ${practice.length ? `<table><thead><tr><th>活动名称</th><th>类型</th><th>时长(小时)</th><th>描述</th></tr></thead><tbody>
-      ${practice.map(r => `<tr><td>${r.activity_name}</td><td>${r.type || '-'}</td><td>${r.hours || 0}</td><td>${r.description || '-'}</td></tr>`).join('')}
+      ${practice.map(r => `<tr><td>${esc(r.activity_name)}</td><td>${esc(r.type || '-')}</td><td>${r.hours || 0}</td><td>${esc(r.description || '-')}</td></tr>`).join('')}
     </tbody></table>` : '<div class="empty">暂无实践经历</div>'}`;
 }
 

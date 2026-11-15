@@ -11,6 +11,10 @@ router.post('/', asyncHandler(async (req, res) => {
     return fail(res, 400, 400, '学号和项目名不能为空');
   }
   const { role, level, start_date, end_date, result } = req.body;
+
+  const [stu] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [student_id]);
+  if (stu.length === 0) return fail(res, 400, 400, '学号不存在，请先添加该学生');
+
   await pool.query(
     'INSERT INTO research_project (student_id, project_name, role, level, start_date, end_date, result) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [student_id, project_name, role, level, start_date, end_date, result || null]

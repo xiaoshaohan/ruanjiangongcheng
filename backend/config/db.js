@@ -11,6 +11,8 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'student_portrait',
   charset: 'utf8mb4',
+  // DATE/DATETIME 直接返回字符串，避免驱动按 UTC 转换导致日期少一天
+  dateStrings: true,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

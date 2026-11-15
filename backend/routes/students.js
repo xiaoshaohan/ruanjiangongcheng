@@ -12,6 +12,11 @@ router.post('/', asyncHandler(async (req, res) => {
     return fail(res, 400, 400, '学号和姓名不能为空');
   }
   const { gender, college, major, grade } = req.body;
+
+  // 先查重，给出"学号已存在"而不是让主键冲突冒成 500
+  const [exists] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [student_id]);
+  if (exists.length > 0) return fail(res, 400, 400, '学号已存在，请勿重复添加');
+
   await pool.query(
     'INSERT INTO student (student_id, name, gender, college, major, grade) VALUES (?, ?, ?, ?, ?, ?)',
     [student_id, name, gender, college, major, grade]
@@ -35,6 +40,11 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // 编辑学生
 router.put('/:id', asyncHandler(async (req, res) => {
   const { name, gender, college, major, grade, phone, email } = req.body;
+  if (!name) return fail(res, 400, 400, '姓名不能为空');
+
+  const [exists] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [req.params.id]);
+  if (exists.length === 0) return fail(res, 404, 404, '学生不存在');
+
   await pool.query(
     'UPDATE student SET name=?, gender=?, college=?, major=?, grade=?, phone=?, email=? WHERE student_id=?',
     [name, gender, college, major, grade, phone, email, req.params.id]

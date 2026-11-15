@@ -14,6 +14,10 @@ router.post('/', validate({
   semester: { label: '学期', type: 'string', maxLength: 50 },
 }), asyncHandler(async (req, res) => {
   const { student_id, course_name, credit, score, semester } = req.body;
+
+  const [stu] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [student_id]);
+  if (stu.length === 0) return fail(res, 400, 400, '学号不存在，请先添加该学生');
+
   await pool.query(
     'INSERT INTO academic_record (student_id, course_name, credit, score, semester) VALUES (?, ?, ?, ?, ?)',
     [student_id, course_name, credit, score, semester || null]
