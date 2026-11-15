@@ -444,6 +444,7 @@
     <div class="page active" id="page-students">
       <div class="card">
         <div class="card-title">学生列表 <span class="count-badge" id="studentCount"></span></div>
+        <div class="cfg-hint" id="teacherScopeHint" style="display:none"></div>
         <div class="search-bar">
           <input type="text" id="searchInput" placeholder="搜索学号或姓名...">
           <select id="filterCollege" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
@@ -471,6 +472,19 @@
         <div class="form-row"><label></label><div>
           <button class="btn btn-primary" onclick="addStudent()">确认添加</button>
           <button class="btn btn-default" onclick="document.getElementById('addStudentForm').style.display='none'">取消</button>
+        </div></div>
+      </div>
+      <div class="card" id="editStudentForm" style="display:none">
+        <div class="card-title">编辑学生 <span class="count-badge" id="editStudentTitle"></span></div>
+        <div class="cfg-hint" id="editStudentHint" style="display:none">教师只能修改自己负责专业的学生信息。</div>
+        <div class="form-row"><label>姓名：</label><input type="text" id="editName"></div>
+        <div class="form-row"><label>性别：</label><select id="editGender"><option value="M">男</option><option value="F">女</option></select></div>
+        <div class="form-row"><label>学院：</label><input type="text" id="editCollege"></div>
+        <div class="form-row"><label>专业：</label><input type="text" id="editMajor"></div>
+        <div class="form-row"><label>年级：</label><input type="number" id="editGrade"></div>
+        <div class="form-row"><label></label><div>
+          <button class="btn btn-primary" onclick="saveStudentEdit()">保存修改</button>
+          <button class="btn btn-default" onclick="document.getElementById('editStudentForm').style.display='none'">取消</button>
         </div></div>
       </div>
     </div>
@@ -563,10 +577,12 @@
         <div class="card-title">用户列表 <span class="count-badge" id="userCount"></span></div>
         <div class="search-bar">
           <button class="btn btn-primary" onclick="toggleAddUser()">新建用户</button>
+          <button class="btn btn-default" onclick="toggleBulkImport()">批量导入账号</button>
+          <button class="btn btn-default" onclick="toggleTeacherForm()">教师档案</button>
           <button class="btn btn-default" onclick="loadUsers()">刷新</button>
         </div>
         <table>
-          <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>绑定学号</th><th>创建时间</th><th>操作</th></tr></thead>
+          <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>绑定学号</th><th>绑定工号</th><th>创建时间</th><th>操作</th></tr></thead>
           <tbody id="userTable"></tbody>
         </table>
       </div>
@@ -582,10 +598,41 @@
           </select>
         </div>
         <div class="form-row"><label>绑定学号：</label><input type="text" id="newUserSid" placeholder="仅学生角色需要，如 2022001"></div>
+        <div class="form-row"><label>绑定工号：</label><input type="text" id="newUserTno" placeholder="仅教师角色需要，如 T001"></div>
         <div class="form-row"><label></label>
           <button class="btn btn-primary" onclick="createUser()">创建</button>
           <button class="btn btn-default" style="margin-left:8px" onclick="toggleAddUser()">取消</button>
         </div>
+      </div>
+      <div class="card" id="bulkImportForm" style="display:none">
+        <div class="card-title">批量导入账号</div>
+        <div class="cfg-hint">每行一条：用户名,密码,学号/工号。导入学生时第三列填学号，导入教师时填工号；首行可以写表头，会自动跳过。</div>
+        <div class="form-row"><label>导入类型：</label>
+          <select id="bulkRole">
+            <option value="student">学生账号</option>
+            <option value="teacher">教师账号</option>
+          </select>
+        </div>
+        <div class="form-row"><label>数据：</label>
+          <textarea id="bulkData" rows="8" style="width:100%;padding:10px;border:1px solid #d8dfe8;border-radius:8px;font-family:inherit;font-size:13px" placeholder="zhangsan,123456,2022001&#10;lisi,123456,2022002"></textarea>
+        </div>
+        <div class="form-row"><label></label>
+          <button class="btn btn-primary" onclick="doBulkImport()">开始导入</button>
+          <button class="btn btn-default" style="margin-left:8px" onclick="toggleBulkImport()">取消</button>
+        </div>
+        <div id="bulkResult"></div>
+      </div>
+      <div class="card" id="teacherForm" style="display:none">
+        <div class="card-title">教师档案</div>
+        <div class="cfg-hint">每行一条：工号,姓名,学院,职称,负责专业。多个专业用顿号分隔。教师档案是教师注册和"老师能改哪些学生"的依据。示例：T002,李老师,计算机学院,副教授,软件工程、物联网工程</div>
+        <div class="form-row"><label>数据：</label>
+          <textarea id="teacherData" rows="6" style="width:100%;padding:10px;border:1px solid #d8dfe8;border-radius:8px;font-family:inherit;font-size:13px" placeholder="T002,李老师,计算机学院,副教授,软件工程"></textarea>
+        </div>
+        <div class="form-row"><label></label>
+          <button class="btn btn-primary" onclick="doTeacherImport()">导入教师档案</button>
+        <button class="btn btn-default" style="margin-left:8px" onclick="loadTeachers()">查看教师列表</button>
+        </div>
+        <div id="teacherList"></div>
       </div>
     </div>
 
@@ -598,6 +645,21 @@
       <div class="card">
         <div class="card-title">我的明细记录</div>
         <div id="myRecords"><div class="empty">加载中...</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">修改我的资料</div>
+        <div class="cfg-hint">只能修改姓名和性别。学号、学院、专业、年级，以及成绩、科研、实践记录都是只读的，由管理员或负责教师维护。</div>
+        <div class="form-row"><label>姓名：</label><input type="text" id="myName" placeholder="请输入姓名"></div>
+        <div class="form-row"><label>性别：</label>
+          <select id="myGender">
+            <option value="">未设置</option>
+            <option value="男">男</option>
+            <option value="女">女</option>
+          </select>
+        </div>
+        <div class="form-row"><label></label>
+          <button class="btn btn-primary" onclick="saveMyProfile()">保存资料</button>
+        </div>
       </div>
     </div>
 
@@ -639,6 +701,19 @@
           <button class="btn btn-default" style="margin-left:8px" onclick="resetSettings()">恢复默认</button>
           <button class="btn btn-default" style="margin-left:8px" onclick="recalcAll()">按当前配置重算全部</button>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">成绩修改权限</div>
+        <div class="cfg-hint">关闭时只有管理员能新增、修改、删除成绩；开启后，教师可以在自己负责的专业范围内修改成绩。录入成绩不受此开关影响。</div>
+        <div class="form-row">
+          <label>允许教师修改成绩：</label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:#2c3e50">
+            <input type="checkbox" id="cfgAllowTeacherEdit" style="width:16px;height:16px"> 开启
+          </label>
+          <button class="btn btn-primary" style="margin-left:14px" onclick="saveSystemConfig()">保存开关</button>
+        </div>
+        <div class="cfg-hint">当前状态：<span id="teacherEditState">读取中...</span></div>
       </div>
     </div>
   </div>
@@ -740,7 +815,7 @@ function activatePage(page) {
   if (target) target.classList.add('active');
 
   if (page === 'dashboard') loadDashboard();
-  if (page === 'students') loadStudents();
+  if (page === 'students') { loadStudents(); loadTeacherMajors(); }
   if (page === 'users') loadUsers();
   if (page === 'myprofile') loadMyProfile();
   if (page === 'settings') loadSettings();
@@ -856,10 +931,17 @@ async function loadStudents(filter = '') {
     tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">没有符合条件的学生</td></tr>';
   }
   list.forEach(s => {
-    // 删除学生仅管理员可用，教师只能查看
-    const actions = CURRENT_ROLE === 'admin'
-      ? `<button class="btn btn-danger" data-sid="${esc(s.student_id)}" onclick="delStudent(this.dataset.sid)">删除</button>`
-      : '<span style="color:#9aa7bd">—</span>';
+    // 管理员可增删改；教师只能编辑自己负责专业的学生
+    const canEdit = CURRENT_ROLE === 'admin'
+      || (CURRENT_ROLE === 'teacher' && teacherMajors.includes(s.major));
+    let actions = '';
+    if (canEdit) {
+      actions += `<button class="btn btn-default btn-mini" data-sid="${esc(s.student_id)}" onclick="openEditStudent(this.dataset.sid)">编辑</button>`;
+    }
+    if (CURRENT_ROLE === 'admin') {
+      actions += `<button class="btn btn-danger btn-mini" data-sid="${esc(s.student_id)}" onclick="delStudent(this.dataset.sid)" style="margin-left:6px">删除</button>`;
+    }
+    if (!actions) actions = '<span style="color:#9aa7bd">—</span>';
     tbody.innerHTML += `<tr>
       <td>${esc(s.student_id)}</td><td>${esc(s.name)}</td><td>${s.gender === 'M' ? '男' : '女'}</td>
       <td>${esc(s.college)}</td><td>${esc(s.major)}</td><td>${esc(s.grade)}</td>
@@ -914,6 +996,68 @@ function fillFilters() {
       grades.map(g => `<option value="${esc(g)}">${esc(g)} 级</option>`).join('');
     gradeSel.value = grades.map(String).includes(prev) ? prev : '';
     gradeSel.dataset.filled = gradeKey;
+  }
+}
+
+// 教师负责的专业（用于判断哪些学生可编辑）
+let teacherMajors = [];
+let editingStudentId = null;
+
+async function loadTeacherMajors() {
+  if (CURRENT_ROLE !== 'teacher') return;
+  try {
+    const res = await api('/api/teachers/my-students');
+    if (res.code === 200) {
+      teacherMajors = (res.data && res.data.majors) || [];
+      const hint = document.getElementById('teacherScopeHint');
+      if (hint && teacherMajors.length > 0) {
+        hint.style.display = 'block';
+        hint.textContent = `你负责的专业：${teacherMajors.join('、')}。这些专业的学生信息你可以修改，其他专业只能查看。`;
+      }
+    }
+  } catch (e) {
+    // 只读浏览不受影响，静默处理
+  }
+}
+
+function openEditStudent(sid) {
+  const s = students.find((x) => String(x.student_id) === String(sid));
+  if (!s) return toast('学生不存在', 'error');
+
+  editingStudentId = s.student_id;
+  document.getElementById('editStudentTitle').textContent = s.student_id;
+  document.getElementById('editStudentHint').style.display = CURRENT_ROLE === 'teacher' ? 'block' : 'none';
+  document.getElementById('editName').value = s.name || '';
+  document.getElementById('editGender').value = s.gender === 'F' ? 'F' : 'M';
+  document.getElementById('editCollege').value = s.college || '';
+  document.getElementById('editMajor').value = s.major || '';
+  document.getElementById('editGrade').value = s.grade || '';
+
+  const form = document.getElementById('editStudentForm');
+  form.style.display = 'block';
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function saveStudentEdit() {
+  if (!editingStudentId) return toast('请先选择学生', 'error');
+
+  const data = {
+    name: document.getElementById('editName').value.trim(),
+    gender: document.getElementById('editGender').value,
+    college: document.getElementById('editCollege').value.trim(),
+    major: document.getElementById('editMajor').value.trim(),
+    grade: document.getElementById('editGrade').value,
+  };
+  if (!data.name) return toast('姓名不能为空', 'error');
+
+  const res = await api('/api/students/' + encodeURIComponent(editingStudentId), 'PUT', data);
+  if (res.code === 200) {
+    toast('学生信息已更新');
+    document.getElementById('editStudentForm').style.display = 'none';
+    editingStudentId = null;
+    loadStudents();
+  } else {
+    toast(res.message, 'error');
   }
 }
 
@@ -1534,12 +1678,13 @@ async function loadUsers() {
 
   const tbody = document.getElementById('userTable');
   tbody.innerHTML = users.length === 0
-    ? '<tr><td colspan="6" class="empty-cell">暂无账号</td></tr>'
+    ? '<tr><td colspan="7" class="empty-cell">暂无账号</td></tr>'
     : users.map(u => `<tr>
         <td>${esc(u.username)}</td>
         <td><select onchange="changeUserRole(${u.id}, this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid #dcdfe6;font-family:inherit">${roleOptions(u.role)}</select></td>
         <td>${u.status === 1 ? '<span style="color:#16a34a">启用</span>' : '<span style="color:#dc2626">禁用</span>'}</td>
         <td>${u.student_id ? esc(u.student_id) + (u.student_name ? ' ' + esc(u.student_name) : '') : '-'}</td>
+        <td>${u.teacher_no ? esc(u.teacher_no) + (u.teacher_name ? ' ' + esc(u.teacher_name) : '') : '-'}</td>
         <td>${esc((u.created_at || '').toString().slice(0, 10))}</td>
         <td>
           <button class="btn btn-default btn-mini" onclick="toggleUserStatus(${u.id}, ${u.status})">${u.status === 1 ? '禁用' : '启用'}</button>
@@ -1560,9 +1705,11 @@ async function createUser() {
     password: document.getElementById('newUserPwd').value,
     role: document.getElementById('newUserRole').value,
     student_id: document.getElementById('newUserSid').value.trim(),
+    teacher_no: document.getElementById('newUserTno').value.trim(),
   };
   if (!data.username) return toast('请填写用户名', 'error');
   if (data.password.length < 6) return toast('密码至少6位', 'error');
+  if (data.role === 'teacher' && !data.teacher_no) return toast('教师账号必须填写工号', 'error');
 
   const res = await api('/api/users', 'POST', data);
   if (res.code === 200) {
@@ -1570,11 +1717,103 @@ async function createUser() {
     document.getElementById('newUsername').value = '';
     document.getElementById('newUserPwd').value = '';
     document.getElementById('newUserSid').value = '';
+    document.getElementById('newUserTno').value = '';
     toggleAddUser();
     loadUsers();
   } else {
     toast(res.message, 'error');
   }
+}
+
+// ---------- 批量导入账号（学生按学号 / 教师按工号） ----------
+function toggleBulkImport() {
+  const el = document.getElementById('bulkImportForm');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function parseImportLines(text) {
+  return String(text || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+}
+
+async function doBulkImport() {
+  const role = document.getElementById('bulkRole').value;
+  const lines = parseImportLines(document.getElementById('bulkData').value);
+  if (lines.length === 0) return toast('请粘贴要导入的数据', 'error');
+
+  const rows = [];
+  for (const line of lines) {
+    const cols = line.split(/[,，\t]/).map((s) => s.trim());
+    if (cols[0] === '用户名' || cols[2] === '学号' || cols[2] === '工号') continue;
+    rows.push(role === 'student'
+      ? { username: cols[0], password: cols[1], student_id: cols[2] }
+      : { username: cols[0], password: cols[1], teacher_no: cols[2] });
+  }
+  if (rows.length === 0) return toast('没有可导入的有效行', 'error');
+
+  const res = await api('/api/users/bulk-import', 'POST', { role, rows });
+  const box = document.getElementById('bulkResult');
+  if (res.code !== 200) {
+    box.innerHTML = `<div class="cfg-hint" style="color:#dc2626">${esc(res.message)}</div>`;
+    return;
+  }
+
+  const d = res.data;
+  const failedHtml = d.failed.length
+    ? `<div class="cfg-hint" style="color:#dc2626;line-height:1.9">${d.failed.map((f) => esc(f.row + '：' + f.reason)).join('<br>')}</div>`
+    : '';
+  box.innerHTML = `<div class="cfg-hint" style="color:#16a34a">${esc(res.message)}</div>${failedHtml}`;
+  toast(`导入完成：成功 ${d.created} 条，失败 ${d.failed.length} 条`);
+  loadUsers();
+}
+
+// ---------- 教师档案 ----------
+function toggleTeacherForm() {
+  const el = document.getElementById('teacherForm');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function doTeacherImport() {
+  const lines = parseImportLines(document.getElementById('teacherData').value);
+  if (lines.length === 0) return toast('请粘贴教师数据', 'error');
+
+  const rows = [];
+  for (const line of lines) {
+    const cols = line.split(/[,，\t]/).map((s) => s.trim());
+    if (cols[0] === '工号') continue;
+    rows.push({ teacher_no: cols[0], name: cols[1], college: cols[2], title: cols[3], majors: cols[4] });
+  }
+  if (rows.length === 0) return toast('没有可导入的有效行', 'error');
+
+  const res = await api('/api/teachers/bulk-import', 'POST', { rows });
+  if (res.code === 200) {
+    toast(res.message);
+    document.getElementById('teacherData').value = '';
+    loadTeachers();
+    loadUsers();
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function loadTeachers() {
+  const box = document.getElementById('teacherList');
+  const res = await api('/api/teachers');
+  if (res.code !== 200) {
+    box.innerHTML = `<div class="empty">${esc(res.message)}</div>`;
+    return;
+  }
+
+  const rows = res.data || [];
+  box.innerHTML = '<table><thead><tr><th>工号</th><th>姓名</th><th>学院</th><th>职称</th><th>负责专业</th><th>绑定账号</th></tr></thead><tbody>'
+    + rows.map((t) => `<tr>
+        <td>${esc(t.teacher_no)}</td>
+        <td>${esc(t.name)}</td>
+        <td>${esc(t.college || '-')}</td>
+        <td>${esc(t.title || '-')}</td>
+        <td>${esc(t.majors || '未设置')}</td>
+        <td>${esc(t.account || '未注册')}</td>
+      </tr>`).join('')
+    + '</tbody></table>';
 }
 
 async function changeUserRole(id, role) {
@@ -1622,6 +1861,21 @@ async function deleteUser(id, username) {
 // ========== 我的画像（学生账号专用） ==========
 let myChart = null;
 
+// 学生保存自己的基本资料（仅姓名、性别）
+async function saveMyProfile() {
+  const name = document.getElementById('myName').value.trim();
+  const gender = document.getElementById('myGender').value;
+  if (!name) return toast('姓名不能为空', 'error');
+
+  const res = await api('/api/me/profile', 'PUT', { name, gender });
+  if (res.code === 200) {
+    toast('资料已更新');
+    loadMyProfile();
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
 async function loadMyProfile() {
   const res = await api('/api/me/profile');
   const body = document.getElementById('myProfileBody');
@@ -1633,6 +1887,8 @@ async function loadMyProfile() {
 
   const { student, portrait, rates, career, career_batch_at } = res.data;
   document.getElementById('myProfileTitle').textContent = `${student.name} - 我的能力画像`;
+  document.getElementById('myName').value = student.name || '';
+  document.getElementById('myGender').value = student.gender || '';
 
   if (!portrait) {
     body.innerHTML = `<div class="empty">${esc(student.student_id)} ${esc(student.name)}（${esc(student.college)} ${esc(student.major)}）还没有生成画像，请联系管理员生成</div>`;
@@ -1701,6 +1957,32 @@ async function loadSettings() {
   document.getElementById('cfgPointNational').value = c.research_points['国家级'];
   document.getElementById('cfgPointProvincial').value = c.research_points['省级'];
   document.getElementById('cfgPointSchool').value = c.research_points['校级'];
+
+  loadSystemConfig();
+}
+
+// 成绩修改权限开关（全局）
+async function loadSystemConfig() {
+  const res = await api('/api/config/system');
+  const box = document.getElementById('teacherEditState');
+  if (res.code !== 200) {
+    if (box) box.textContent = res.message || '读取失败';
+    return;
+  }
+  const on = !!res.data.allow_teacher_edit_score;
+  document.getElementById('cfgAllowTeacherEdit').checked = on;
+  box.textContent = on ? '已开放：教师可修改自己负责专业学生的成绩' : '已关闭：只有管理员能修改成绩';
+}
+
+async function saveSystemConfig() {
+  const on = document.getElementById('cfgAllowTeacherEdit').checked;
+  const res = await api('/api/config/system', 'PUT', { allow_teacher_edit_score: on });
+  if (res.code === 200) {
+    toast(res.message);
+    loadSystemConfig();
+  } else {
+    toast(res.message, 'error');
+  }
 }
 
 function collectSettings() {

@@ -4,18 +4,22 @@
 
 围绕学生的学业成绩、科研项目、实践活动，计算能力画像并给出职业方向推荐。后端 Node.js + Express + MySQL，前端原生 HTML/CSS/JavaScript（ECharts 图表）。
 
-## 功能清单（v1.7）
+## 功能清单（v1.8）
 
 - 三角色登录与权限隔离：管理员 / 教师 / 学生，后端中间件 + 前端菜单双重控制
+- **账号认证**：注册分学生 / 教师两种身份，学生凭学号、教师凭工号；学号或工号不在基础表中注册直接失败，一个学号/工号只能绑定一个账号
+- **师生关系**：教师档案记录工号、姓名、学院、职称与负责专业，学生专业命中即视为该教师的学生
+- **权限分级**：管理员可改所有人与所有数据；学生只能改自己的姓名、性别；教师只能改自己和负责专业的学生
+- **成绩权限**：录入成绩限教师与管理员；学生只读；修改/删除成绩默认只有管理员，管理员在系统设置里打开开关后教师才可改（同样限负责专业）
 - 学生管理：列表、筛选（学院 / 专业 / 年级 / 关键字）、新增、编辑、删除（级联清理关联数据）
 - 数据录入：学业成绩、科研项目、实践经历，支持单条增改删与 CSV 批量导入
 - 能力画像：GPA、学业 / 科研 / 实践三维得分，统一换算为得分率（0–100）后加权
 - 职业推荐：按画像给出方向与推荐度，**每次计算按批次落库**，保留最近 5 批可回溯
 - 数据看板：总量、均值、五档分布、TOP5，支持按学院 / 专业 / 年级 / 学期筛选
 - 学生对比：两名学生雷达图与逐项差值
-- 学生个人视图：学生账号只看自己的画像与明细
-- 用户管理：新建账号、改角色、禁用 / 启用、重置密码、删除（保留至少一个启用管理员）
-- 系统设置：画像权重、标准分、换算系数、科研分值可配置，支持恢复默认与按当前配置重算全部
+- 学生个人视图：学生账号只看自己的画像与明细，可修改自己的姓名和性别
+- 用户管理：新建账号、改角色、禁用 / 启用、重置密码、删除（保留至少一个启用管理员），**支持批量导入学生 / 教师账号**
+- 系统设置：画像权重、标准分、换算系数、科研分值可配置，支持恢复默认与按当前配置重算全部；另有**“允许教师修改成绩”全局开关**
 - CSV 导出：学生列表、画像报告（UTF-8 BOM，Excel 直接可读）
 
 ## 项目结构
@@ -47,12 +51,14 @@ ruanjiangongcheng2/
 │   │   ├── validate.js         # 声明式参数校验
 │   │   ├── portrait.js         # 画像计算核心逻辑
 │   │   ├── portraitConfig.js   # 计分规则读取（缓存 + 默认值兜底）
+│   │   ├── permission.js       # 师生关系与写权限判定
 │   │   └── recommendationStore.js  # 推荐按批次落库与清理
 │   ├── sql/
 │   │   ├── init.sql            # 建库建表 + 示例数据
 │   │   ├── auth.sql            # 系统用户表
 │   │   ├── optimize.sql        # 索引与视图
-│   │   └── migrate-v1.7-*.sql  # v1.7 三个迁移脚本
+│   │   ├── migrate-v1.7-*.sql  # v1.7 三个迁移脚本
+│   │   └── migrate-v1.8-accounts.sql  # v1.8 账号体系（teacher / teacher_major / sys_config）
 │   ├── test/
 │   │   ├── portrait.test.js    # 画像算法单元测试
 │   │   └── api.test.js         # 接口测试（内存替身，不连库）
@@ -110,25 +116,35 @@ ruanjiangongcheng2/
 
 ## 角色与账号
 
-| 角色 | 可见功能 |
-| ---- | ---- |
-| admin 管理员 | 全部功能，含用户管理、系统设置、批量导入、删除学生 |
-| teacher 教师 | 数据看板、学生管理（只读+新增/修改）、数据录入、画像分析、学生对比、导出 |
-| student 学生 | 只有“我的画像”，查看自己绑定学号对应的画像与明细 |
+| 角色 | 可见功能 | 可写范围 |
+| ---- | ---- | ---- |
+| admin 管理员 | 全部功能，含用户管理、教师档案、批量导入、系统设置、删除学生 | 所有学生与所有数据 |
+| teacher 教师 | 数据看板、学生管理、数据录入、画像分析、学生对比、导出 | 仅自己 + 自己负责专业的学生；成绩改删还需管理员打开开关 |
+| student 学生 | 只有“我的画像”（自己的画像、明细、修改资料） | 仅自己的姓名、性别；成绩 / 科研 / 实践只读 |
 
-首次启动只创建 `admin / admin123`。要演示教师和学生视角，用管理员登录后在“用户管理”页新建账号（学生角色需填绑定学号），或让学生自己注册——注册固定为 student 角色，可选填学号绑定。
+首次启动只创建 `admin / admin123`。教师与学生账号有两种建法：
 
-## 已有数据库升级到 v1.7
+1. 管理员在“用户管理”页新建，或用“批量导入账号”粘贴 `用户名,密码,学号/工号` 逐行导入，返回逐行成败与原因；
+2. 本人自助注册：注册页先选身份，学生填学号、教师填工号。学号或工号必须已在基础表中且未被其他账号绑定，否则注册失败。
 
-旧版脚本初始化的库，按顺序执行三个迁移脚本（可重复执行，不破坏已有数据）：
+教师能改哪些学生，取决于“教师档案”里登记的负责专业：学生 `major` 命中该教师的专业列表即视为他的学生。先在“用户管理 → 教师档案”里准备教师数据（`工号,姓名,学院,职称,负责专业`，多个专业用顿号分隔）。
+
+## 已有数据库升级到 v1.8
+
+旧版脚本初始化的库，按顺序执行迁移脚本（可重复执行，不破坏已有数据）：
 
 ```sql
 source sql/migrate-v1.7-permission.sql;   -- sys_user 加 status / student_id，历史 role=user 改为 student
 source sql/migrate-v1.7-career.sql;       -- 新增 career_recommendation（推荐历史）
 source sql/migrate-v1.7-config.sql;       -- 新增 portrait_config（计分规则）
+source sql/migrate-v1.8-accounts.sql;     -- 新增 teacher / teacher_major / sys_config，sys_user 加 teacher_no
 ```
 
 升级后在“系统设置”页点一次“按当前配置重算全部”，让全部画像按新口径重算并写入推荐历史。
+
+## 多机共用同一个库
+
+数据库连接参数都在 `backend/.env` 的 `DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME`。要让几台电脑共用同一份数据，把 MySQL 部署在一台彼此可连通的机器上，各机 `.env` 的 `DB_HOST` 统一填那台机器的地址，其余四项与建库时保持一致，再按上面的迁移脚本建表。这样管理员在哪台电脑登录，改的都是同一个库。
 
 ## 接口一览
 
@@ -137,17 +153,23 @@ source sql/migrate-v1.7-config.sql;       -- 新增 portrait_config（计分规�
 | 方法 | 路径 | 说明 | 权限 |
 | --- | --- | --- | --- |
 | POST | /api/auth/login | 登录，返回 JWT（8 小时） | 公开 |
-| POST | /api/auth/register | 自助注册，固定 student，可选绑定学号 | 公开 |
+| POST | /api/auth/register | 自助注册，按身份认证：学生填学号、教师填工号，不存在即失败 | 公开 |
 | POST | /api/auth/change-password | 修改当前用户密码 | 登录用户 |
 | GET | /api/auth/me | 当前用户信息 | 登录用户 |
 | GET/POST/PUT/DELETE | /api/users[...] | 用户列表、新建、改角色状态、删除 | admin |
+| POST | /api/users/bulk-import | 批量导入学生 / 教师账号（逐行校验，上限 500 条） | admin |
 | POST | /api/users/:id/reset-password | 重置指定用户密码 | admin |
+| GET/POST | /api/teachers | 教师档案列表、新增或更新（含负责专业） | admin |
+| POST | /api/teachers/bulk-import | 批量导入教师档案 | admin |
+| DELETE | /api/teachers/:teacherNo | 删除教师（有账号绑定时拒绝） | admin |
+| GET | /api/teachers/my-students | 教师查看自己负责的专业与学生 | teacher |
 | GET | /api/me/profile | 学生自己的画像与推荐 | student |
+| PUT | /api/me/profile | 学生修改自己的姓名、性别 | student |
 | GET | /api/me/records | 学生自己的三类明细 | student |
-| GET/POST/PUT/DELETE | /api/students[...] | 学生增删改查（删除仅 admin） | staff / admin |
-| POST/GET/PUT/DELETE | /api/academic[...] | 学业成绩 | staff |
-| POST/GET/PUT/DELETE | /api/research[...] | 科研项目 | staff |
-| POST/GET/PUT/DELETE | /api/practice[...] | 实践经历 | staff |
+| GET/POST/PUT/DELETE | /api/students[...] | 学生增删改查（删除仅 admin，编辑按师生关系鉴权） | staff / admin |
+| POST/GET/PUT/DELETE | /api/academic[...] | 学业成绩（录入按师生关系鉴权；改删需管理员开放开关） | staff |
+| POST/GET/PUT/DELETE | /api/research[...] | 科研项目（同上） | staff |
+| POST/GET/PUT/DELETE | /api/practice[...] | 实践经历（同上） | staff |
 | POST | /api/portrait/calculate/:id | 计算画像并写入一批推荐 | staff |
 | GET | /api/portrait/:id | 读取画像 | staff |
 | GET | /api/portrait/career/:id | 最近一次推荐 | staff |
@@ -158,6 +180,8 @@ source sql/migrate-v1.7-config.sql;       -- 新增 portrait_config（计分规�
 | PUT | /api/config/portrait | 保存计分规则（校验权重和为 1） | admin |
 | POST | /api/config/portrait/reset | 恢复默认 | admin |
 | POST | /api/config/portrait/recalculate-all | 按当前配置重算全部 | admin |
+| GET | /api/config/system | 读取系统开关（allow_teacher_edit_score） | staff |
+| PUT | /api/config/system | 保存系统开关 | admin |
 | GET | /api/export/students | 导出学生 CSV | staff |
 | GET | /api/export/portraits | 导出画像 CSV | staff |
 | POST | /api/import/{students,academic,research,practice} | 批量导入 CSV | admin |
@@ -180,3 +204,4 @@ npm test
 | v1.5 | 统一响应格式、参数校验中间件、索引与视图、批量导入 |
 | v1.6 | 明细只增不删的评审修正、量纲归一化（得分率）、UI 调整 |
 | v1.7 | 三角色权限隔离、用户管理、学生个人视图、看板筛选、推荐落库与历史、计分规则配置化；修复重复学号 500、不存在学号 500、存储型 XSS、日期少一天；权重定为学业 80%、科研 10%、实践 10%，绩点按分数段线性插值（90-100→4.0、80-89→3.0~3.9、70-79→2.0~2.9、60-69→1.0~1.9），看板总分分布改 20 分一档，职业推荐兜底改为按得分率区分“学业基础方向/基础积累方向”并指出短板，不再误称发展均衡 |
+| v1.8 | 账号体系升级：注册分学生 / 教师身份并强制学号、工号认证（不存在即注册失败），教师档案与负责专业（teacher / teacher_major），师生关系按专业匹配；权限分级——管理员改所有人，学生只能改自己姓名性别，教师只能改自己与负责专业的学生；成绩录入限教师与管理员、学生只读，改删成绩默认仅管理员，由“允许教师修改成绩”全局开关放开；用户管理与教师档案支持批量导入；`.env` 的 DB_HOST 支持多机指向同一共享库 |

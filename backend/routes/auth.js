@@ -62,6 +62,7 @@ router.post('/login', validate({
     username: rows[0].username,
     role: rows[0].role,
     student_id: rows[0].student_id || null,
+    teacher_no: rows[0].teacher_no || null,
   });
 
   ok(res, {
@@ -70,17 +71,19 @@ router.post('/login', validate({
       username: rows[0].username,
       role: rows[0].role,
       student_id: rows[0].student_id || null,
+      teacher_no: rows[0].teacher_no || null,
     },
   }, '登录成功');
 }));
 
 // ---------- 注册 ----------
-// 自助注册一律为 student 角色；教师和管理员账号由管理员在"用户管理"里创建或调整
+// 学生凭学号认证、教师凭工号认证；学号/工号必须存在于基础数据表，否则注册失败
 router.post('/register', validate({
   username: { required: true, label: '用户名', type: 'string', maxLength: 50 },
   password: { required: true, label: '密码', type: 'string', maxLength: 100 },
 }), asyncHandler(async (req, res) => {
-  const { username, password, student_id } = req.body;
+  const { username, password, identity, student_id, teacher_no } = req.body;
+  const role = identity === 'teacher' ? 'teacher' : 'student';
 
   // 校验中间件不支持字符串最小长度，这里手动补充
   if (username.length < 3) return fail(res, 400, 400, '用户名至少3个字符');
@@ -90,22 +93,37 @@ router.post('/register', validate({
   const [exists] = await pool.query('SELECT id FROM sys_user WHERE username = ?', [username]);
   if (exists.length > 0) return fail(res, 400, 400, '用户名已被注册');
 
-  // 填了学号则校验学生存在，并确认该学号没被别的账号绑定
   let boundStudentId = null;
-  if (student_id) {
+  let boundTeacherNo = null;
+
+  if (role === 'student') {
+    // 学生认证：学号必填，且必须存在于学生表、未被其他账号绑定
+    if (!student_id) return fail(res, 400, 400, '学生注册必须填写学号');
     const [students] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [student_id]);
     if (students.length === 0) return fail(res, 400, 400, '学号不存在，请核对后重试');
 
     const [bound] = await pool.query('SELECT id FROM sys_user WHERE student_id = ?', [student_id]);
     if (bound.length > 0) return fail(res, 400, 400, '该学号已被其他账号绑定');
     boundStudentId = student_id;
+  } else {
+    // 教师认证：工号必填，且必须存在于教师表、未被其他账号绑定
+    if (!teacher_no) return fail(res, 400, 400, '教师注册必须填写工号');
+    const [teachers] = await pool.query(
+      'SELECT teacher_no FROM teacher WHERE teacher_no = ? AND status = 1',
+      [teacher_no]
+    );
+    if (teachers.length === 0) return fail(res, 400, 400, '工号不存在或已停用，请核对后重试');
+
+    const [bound] = await pool.query('SELECT id FROM sys_user WHERE teacher_no = ?', [teacher_no]);
+    if (bound.length > 0) return fail(res, 400, 400, '该工号已被其他账号绑定');
+    boundTeacherNo = teacher_no;
   }
 
   await pool.query(
-    'INSERT INTO sys_user (username, password_hash, role, student_id) VALUES (?, ?, ?, ?)',
-    [username, hashPassword(password), 'student', boundStudentId]
+    'INSERT INTO sys_user (username, password_hash, role, student_id, teacher_no) VALUES (?, ?, ?, ?, ?)',
+    [username, hashPassword(password), role, boundStudentId, boundTeacherNo]
   );
-  ok(res, { username, role: 'student', student_id: boundStudentId }, '注册成功');
+  ok(res, { username, role, student_id: boundStudentId, teacher_no: boundTeacherNo }, '注册成功');
 }));
 
 // ---------- 修改密码 ----------

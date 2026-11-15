@@ -66,6 +66,25 @@ router.get('/profile', authRequired, asyncHandler(async (req, res) => {
   });
 }));
 
+// 学生修改自己的基本资料（仅姓名、性别；成绩/科研/实践保持只读）
+router.put('/profile', authRequired, asyncHandler(async (req, res) => {
+  if (req.user.role !== 'student') return fail(res, 403, 403, '该操作仅供学生账号使用');
+  if (!req.user.student_id) return fail(res, 400, 400, '当前账号还没有绑定学号');
+
+  const { name, gender } = req.body || {};
+  if (!name || !String(name).trim()) return fail(res, 400, 400, '姓名不能为空');
+  if (gender && !['男', '女'].includes(gender)) return fail(res, 400, 400, '性别只能是男或女');
+
+  const [rows] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [req.user.student_id]);
+  if (rows.length === 0) return fail(res, 404, 404, '学生信息不存在');
+
+  await pool.query(
+    'UPDATE student SET name = ?, gender = ? WHERE student_id = ?',
+    [String(name).trim(), gender || null, req.user.student_id]
+  );
+  ok(res, { student_id: req.user.student_id, name: String(name).trim(), gender: gender || null }, '资料已更新');
+}));
+
 // 当前学生自己的明细记录（成绩 / 科研 / 实践），只读
 router.get('/records', authRequired, asyncHandler(async (req, res) => {
   if (req.user.role !== 'student') return fail(res, 403, 403, '该页面仅供学生账号使用');

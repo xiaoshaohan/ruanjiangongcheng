@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
 const { adminOnly } = require('../utils/auth');
+const { canWriteStudent } = require('../utils/permission');
 
 const router = express.Router();
 
@@ -37,13 +38,16 @@ router.get('/:id', asyncHandler(async (req, res) => {
   ok(res, rows[0]);
 }));
 
-// 编辑学生
+// 编辑学生（管理员不限；教师只能改自己负责专业的学生）
 router.put('/:id', asyncHandler(async (req, res) => {
   const { name, gender, college, major, grade, phone, email } = req.body;
   if (!name) return fail(res, 400, 400, '姓名不能为空');
 
   const [exists] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [req.params.id]);
   if (exists.length === 0) return fail(res, 404, 404, '学生不存在');
+
+  const perm = await canWriteStudent(req.user, req.params.id);
+  if (!perm.allowed) return fail(res, 403, 403, perm.reason);
 
   await pool.query(
     'UPDATE student SET name=?, gender=?, college=?, major=?, grade=?, phone=?, email=? WHERE student_id=?',

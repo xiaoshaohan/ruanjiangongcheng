@@ -6,6 +6,7 @@ const { adminOnly, staffOnly } = require('../utils/auth');
 const { DEFAULT_CONFIG, getPortraitConfig, clearConfigCache, validateConfig, mergeConfig } = require('../utils/portraitConfig');
 const { computePortrait, computeCareerRecommendation } = require('../utils/portrait');
 const { saveRecommendations } = require('../utils/recommendationStore');
+const { isTeacherEditScoreAllowed } = require('../utils/permission');
 
 const router = express.Router();
 
@@ -81,6 +82,23 @@ router.post('/portrait/recalculate-all', adminOnly, asyncHandler(async (req, res
   }
 
   ok(res, { total: students.length, done }, `已按当前配置重算 ${done} 名学生的画像`);
+}));
+
+// ---------- 系统开关：是否允许教师修改成绩 ----------
+router.get('/system', staffOnly, asyncHandler(async (req, res) => {
+  const allowed = await isTeacherEditScoreAllowed();
+  ok(res, { allow_teacher_edit_score: allowed });
+}));
+
+router.put('/system', adminOnly, asyncHandler(async (req, res) => {
+  const allowed = !!req.body.allow_teacher_edit_score;
+  await pool.query(
+    `INSERT INTO sys_config (config_key, config_value, description)
+     VALUES ('allow_teacher_edit_score', ?, '是否允许教师修改成绩：1 允许 / 0 仅管理员')
+     ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`,
+    [allowed ? '1' : '0']
+  );
+  ok(res, { allow_teacher_edit_score: allowed }, allowed ? '已开放教师修改成绩' : '已收回教师修改成绩的权限');
 }));
 
 module.exports = router;

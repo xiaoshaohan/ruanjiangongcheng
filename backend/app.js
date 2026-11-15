@@ -52,6 +52,8 @@ app.use('/api/export', staffOnly, require('./routes/export'));
 // 仅管理员可用
 app.use('/api/import', adminOnly, require('./routes/import'));
 app.use('/api/users', adminOnly, require('./routes/users'));
+// 教师基础数据（列表/导入仅管理员，教师可查看自己负责的学生）
+app.use('/api/teachers', require('./routes/teachers'));
 // 系统配置（读接口教师可用，写接口内部仅管理员）
 app.use('/api/config', require('./routes/config'));
 // 学生个人视图（学生角色专用）

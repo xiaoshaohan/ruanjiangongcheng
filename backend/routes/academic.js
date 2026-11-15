@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
 const { validate } = require('../utils/validate');
+const { canWriteStudent } = require('../utils/permission');
 
 const router = express.Router();
 
@@ -17,6 +18,10 @@ router.post('/', validate({
 
   const [stu] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [student_id]);
   if (stu.length === 0) return fail(res, 400, 400, '学号不存在，请先添加该学生');
+
+  // 录入权限：管理员不限，教师只能录自己负责专业的学生
+  const perm = await canWriteStudent(req.user, student_id);
+  if (!perm.allowed) return fail(res, 403, 403, perm.reason);
 
   await pool.query(
     'INSERT INTO academic_record (student_id, course_name, credit, score, semester) VALUES (?, ?, ?, ?, ?)',
@@ -35,8 +40,12 @@ router.put('/:id', validate({
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return fail(res, 400, 400, '记录编号不合法');
 
-  const [exists] = await pool.query('SELECT id FROM academic_record WHERE id = ?', [id]);
+  const [exists] = await pool.query('SELECT id, student_id FROM academic_record WHERE id = ?', [id]);
   if (exists.length === 0) return fail(res, 404, 404, '成绩记录不存在');
+
+  // 修改权限：管理员总是可以；教师需管理员开放开关且属于自己负责专业
+  const perm = await canWriteStudent(req.user, exists[0].student_id, { requireEditSwitch: true });
+  if (!perm.allowed) return fail(res, 403, 403, perm.reason);
 
   const { course_name, credit, score, semester } = req.body;
   await pool.query(
@@ -46,13 +55,18 @@ router.put('/:id', validate({
   ok(res, null, '成绩已更新');
 }));
 
-// 删除单条成绩
+// 删除单条成绩（与修改同权限：管理员，或已获授权的教师）
 router.delete('/:id', asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return fail(res, 400, 400, '记录编号不合法');
 
-  const [result] = await pool.query('DELETE FROM academic_record WHERE id = ?', [id]);
-  if (result.affectedRows === 0) return fail(res, 404, 404, '成绩记录不存在');
+  const [rows] = await pool.query('SELECT id, student_id FROM academic_record WHERE id = ?', [id]);
+  if (rows.length === 0) return fail(res, 404, 404, '成绩记录不存在');
+
+  const perm = await canWriteStudent(req.user, rows[0].student_id, { requireEditSwitch: true });
+  if (!perm.allowed) return fail(res, 403, 403, perm.reason);
+
+  await pool.query('DELETE FROM academic_record WHERE id = ?', [id]);
   ok(res, null, '成绩已删除');
 }));
 
