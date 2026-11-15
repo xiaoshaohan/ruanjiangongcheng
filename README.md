@@ -5,10 +5,10 @@
 ## 项目结构
 
 ```
-ruanjiangongcheng/
+ruanjiangongcheng2/
 ├── backend/              # 后端服务（Node.js + Express）
-│   ├── app.js            # 主入口，挂载中间件与路由
-│   ├── package.json       # 依赖配置
+│   ├── app.js            # 主入口，挂载中间件与路由（按角色分组）
+│   ├── package.json      # 依赖配置
 │   ├── config/
 │   │   └── db.js         # 数据库连接配置
 │   ├── routes/           # 路由模块
@@ -16,13 +16,24 @@ ruanjiangongcheng/
 │   │   ├── academic.js   # 学业成绩接口
 │   │   ├── research.js   # 科研项目接口
 │   │   ├── practice.js   # 实践经历接口
-│   │   └── portrait.js   # 画像计算/查询接口
+│   │   ├── portrait.js   # 画像计算 / 查询 / 职业推荐
+│   │   ├── stats.js      # 数据看板统计（支持筛选）
+│   │   ├── export.js     # CSV 导出
+│   │   ├── import.js     # CSV 批量导入
+│   │   ├── auth.js       # 登录、注册、改密
+│   │   ├── users.js      # 用户管理（仅管理员）
+│   │   ├── me.js         # 学生个人视图
+│   │   └── config.js     # 画像计分规则配置
 │   ├── utils/            # 公共工具
-│   │   ├── response.js   # 统一响应格式与错误处理
-│   │   └── portrait.js   # 画像计算核心逻辑
-│   ├── public/           # 前端静态页面
-│   └── sql/
-│       └── init.sql      # 数据库初始化脚本
+│   │   ├── response.js       # 统一响应格式与错误处理
+│   │   ├── auth.js           # JWT 鉴权与角色中间件
+│   │   ├── validate.js       # 参数校验
+│   │   ├── portrait.js       # 画像计算核心逻辑
+│   │   ├── portraitConfig.js # 计分规则配置读取
+│   │   └── recommendationStore.js # 推荐落库
+│   ├── sql/              # 建表与迁移脚本
+│   └── test/             # node:test 单元与接口测试
+├── frontend/             # 前端静态页面（index / login / register）
 └── README.md
 ```
 
@@ -30,14 +41,14 @@ ruanjiangongcheng/
 
 - 后端：Node.js + Express.js
 - 数据库：MySQL 8.4
-- 前端：Vue.js（待开发）
+- 前端：原生 HTML + CSS + JavaScript（ECharts 图表）
 
 ## 运行方式
 
 ```bash
 cd backend
 npm install
-# 先执行 sql/init.sql 初始化数据库
+# 先执行 sql/init.sql 与 sql/auth.sql 初始化数据库
 npm start
 ```
 
@@ -47,6 +58,7 @@ npm start
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| POST | /api/auth/login | 登录，返回 JWT |
 | GET | /api/students | 查询学生列表 |
 | POST | /api/students | 添加学生 |
 | GET | /api/students/:id | 查询单个学生 |
@@ -56,8 +68,16 @@ npm start
 | GET | /api/research/:studentId | 查询某学生科研项目 |
 | POST | /api/practice | 录入实践经历 |
 | GET | /api/practice/:studentId | 查询某学生实践经历 |
-| POST | /api/portrait/calculate/:id | 计算学生画像 |
+| POST | /api/portrait/calculate/:id | 计算学生画像（同时写入推荐历史） |
 | GET | /api/portrait/:id | 查询学生画像 |
+| GET | /api/portrait/career/:id | 最近一次职业推荐 |
+| GET | /api/portrait/career-history/:id | 职业推荐历史（最多 5 批） |
+| GET | /api/stats | 看板统计，支持 college / major / grade / semester 筛选 |
+| GET | /api/stats/options | 看板筛选下拉选项 |
+| GET/POST/PUT/DELETE | /api/users... | 用户管理（仅管理员） |
+| GET | /api/me/profile | 学生查看自己的画像（仅学生） |
+| GET | /api/me/records | 学生查看自己的明细（仅学生） |
+| GET/PUT/POST | /api/config/portrait... | 画像权重与计分规则配置 |
 
 ## 补充说明：当前版本的运行与测试
 
@@ -90,6 +110,30 @@ npm start
 
    根据自己的数据库环境修改 `.env` 中的连接信息。该文件包含本机数据库配置，不要提交或分享密码。
 5. 在 `backend` 目录执行 `npm start`，看到“数据库连接成功”后，在浏览器打开 `http://localhost:3000`（如果在 `.env` 中修改了 `PORT`，请使用对应端口）。首次启动且用户表为空时，程序创建实验用账号 `admin / admin123`。该账号只供本地实验，本原型不应直接暴露到公网或用于保存真实学生数据。
+
+### 角色与账号（v1.7）
+
+系统区分三种角色，登录后菜单与可见功能不同：
+
+| 角色 | 可见功能 |
+| ---- | ---- |
+| admin 管理员 | 全部功能，含用户管理、系统设置、批量导入、删除学生 |
+| teacher 教师 | 数据看板、学生管理（只读+新增/修改）、数据录入、画像分析、学生对比、导出 |
+| student 学生 | 只有"我的画像"，查看自己绑定的学号对应的画像与明细 |
+
+首次启动只创建 `admin / admin123`。要演示教师和学生视角，用管理员登录后在"用户管理"页新建账号（学生角色需填绑定学号），或让学生自己注册——注册固定为 student 角色，可选填学号绑定。
+
+### 已有数据库升级到 v1.7
+
+如果库是用旧版脚本初始化的，按顺序执行三个迁移脚本（都写成可重复执行，不会破坏已有数据）：
+
+```sql
+source sql/migrate-v1.7-permission.sql;   -- sys_user 加 status / student_id，历史 role=user 统一改为 student
+source sql/migrate-v1.7-career.sql;       -- 新增 career_recommendation 表（推荐历史）
+source sql/migrate-v1.7-config.sql;       -- 新增 portrait_config 表（画像计分规则）
+```
+
+升级后建议在"系统设置"页点一次"按当前配置重算全部"，让全部画像按新口径重算并写入推荐历史。
 
 ### 运行测试
 
