@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const express = require('express');
 
+// 单测环境：utils/auth.js 在非 test 环境强制要求 JWT_SECRET，这里使用固定测试密钥
+process.env.NODE_ENV = 'test';
+
 const salt = 'test-salt';
 const passwordHash = `${salt}:${crypto.scryptSync('admin123', salt, 64).toString('hex')}`;
 const records = [];
@@ -30,9 +33,21 @@ const connection = {
 const pool = {
   async getConnection() { return connection; },
   async query(sql, args) {
-    if (sql.includes('SELECT * FROM sys_user')) return [args[0] === 'admin' ? [{ id: 1, username: 'admin', role: 'admin', password_hash: passwordHash }] : []];
+    if (sql.includes('SELECT * FROM sys_user')) {
+      return [args[0] === 'admin'
+        ? [{ id: 1, username: 'admin', role: 'admin', status: 1, token_version: 0, student_id: null, teacher_no: null, password_hash: passwordHash }]
+        : []];
+    }
+    // R03：鉴权中间件会按 id 回查账号状态与 token 版本
+    if (sql.includes('FROM sys_user WHERE id')) {
+      return [args[0] === 1
+        ? [{ id: 1, username: 'admin', role: 'admin', status: 1, student_id: null, teacher_no: null, token_version: 0 }]
+        : []];
+    }
     // 录入前会校验学号是否存在
     if (sql.includes('SELECT student_id FROM student')) return [args[0] === student.student_id ? [student] : []];
+    // 成绩查重（R16）
+    if (sql.includes('SELECT id FROM academic_record')) return [[]];
     // 配置表返回空，走默认计分规则
     if (sql.includes('FROM portrait_config')) return [[]];
     if (sql.includes('INSERT INTO academic_record')) {
@@ -40,6 +55,17 @@ const pool = {
       return [{}];
     }
     if (sql.includes('FROM academic_record')) return [records.filter(row => row.student_id === args[0])];
+    // 明细写入后自动重算画像会走这里（R15）
+    if (sql.includes('INSERT INTO ability_profile')) {
+      savedProfile = {
+        student_id: args[0], gpa: args[1], academic_score: args[2],
+        research_score: args[3], practice_score: args[4], total_score: args[5],
+        config_version: args[6] || null, name: student.name,
+      };
+      return [{}];
+    }
+    if (sql.includes('INSERT INTO career_recommendation')) return [{}];
+    if (sql.includes('DISTINCT batch_at FROM career_recommendation')) return [[]];
     if (sql.includes('FROM ability_profile p')) return [savedProfile && savedProfile.student_id === args[0] ? [savedProfile] : []];
     throw new Error(`未模拟的查询: ${sql}`);
   },

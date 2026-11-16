@@ -152,18 +152,27 @@ describe('画像计算 - 综合总分', () => {
 
 describe('职业推荐', () => {
   test('学业科研双强 → 推荐学术研究方向', () => {
+    // R23：科研得分率需达到 40% 才构成"科研支撑"，不再是原始分 8 分
     const recs = computeCareerRecommendation({
-      academic_score: 25, research_score: 12, practice_score: 5, total_score: 20, gpa: 3.5,
+      academic_score: 25, research_score: 50, practice_score: 10, total_score: 30, gpa: 3.5,
     });
     assert.strictEqual(recs.length >= 1, true);
     assert.strictEqual(recs[0].direction, '学术研究方向');
   });
 
-  test('实践分高 → 推荐工程实践方向', () => {
+  test('实践得分率达到 60% → 推荐工程实践方向', () => {
     const recs = computeCareerRecommendation({
-      academic_score: 15, research_score: 3, practice_score: 30, total_score: 15, gpa: 2.5,
+      academic_score: 15, research_score: 3, practice_score: 70, total_score: 15, gpa: 2.5,
     });
     assert.strictEqual(recs[0].direction, '工程实践方向');
+  });
+
+  test('科研分只有 12/100 时不称科研强，也不推荐学术方向', () => {
+    const recs = computeCareerRecommendation({
+      academic_score: 25, research_score: 12, practice_score: 5, total_score: 25, gpa: 3.8,
+    });
+    assert.strictEqual(recs[0].direction, '学业基础方向');
+    assert.ok(!recs[0].reason.includes('科研经历丰富'), '不应把 12% 说成科研经历丰富');
   });
 
   test('各维度都低 → 推荐基础积累方向', () => {

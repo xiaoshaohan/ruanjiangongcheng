@@ -333,7 +333,25 @@
       .sidebar { width: 160px; }
       .main { padding: 16px; }
       .stat-cards { grid-template-columns: repeat(2, 1fr); }
+      /* R39：窄屏下隐藏次要列，保留学号/姓名/操作，避免操作按钮被截断 */
+      .hide-narrow { display: none; }
+      .card { padding: 14px; }
+      table { font-size: 13px; }
+      th, td { padding: 9px 8px; }
     }
+
+    /* ---------- 分页与导入结果 ---------- */
+    .pager { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; color: #5a6b82; }
+    .pager button { padding: 5px 12px; border: 1px solid #d8dfe8; background: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .pager button:disabled { color: #b8c2cf; cursor: not-allowed; }
+    .import-panel { margin-top: 14px; }
+    .import-errors {
+      max-height: 220px; overflow: auto; margin-top: 10px;
+      border: 1px solid #f3d4d4; background: #fff8f8; border-radius: 8px; padding: 10px 12px;
+      font-size: 13px; color: #a33; line-height: 1.7;
+    }
+    .import-type-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+    .combo-hint { font-size: 12px; color: #8b9aae; margin-left: 6px; }
   </style>
 </head>
 <body>
@@ -446,20 +464,42 @@
         <div class="card-title">学生列表 <span class="count-badge" id="studentCount"></span></div>
         <div class="cfg-hint" id="teacherScopeHint" style="display:none"></div>
         <div class="search-bar">
-          <input type="text" id="searchInput" placeholder="搜索学号或姓名...">
-          <select id="filterCollege" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
-          <select id="filterMajor" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
-          <select id="filterGrade" onchange="loadStudents(document.getElementById('searchInput').value)"></select>
+          <input type="text" id="searchInput" placeholder="搜索学号或姓名..." oninput="scheduleStudentSearch()">
+          <select id="filterCollege" onchange="loadStudents(1)"></select>
+          <select id="filterMajor" onchange="loadStudents(1)"></select>
+          <select id="filterGrade" onchange="loadStudents(1)"></select>
           <button class="btn btn-primary admin-only" onclick="openAddStudent()">添加学生</button>
           <button class="btn btn-default" onclick="exportCsv('/api/export/students','学生列表')">导出学生CSV</button>
           <button class="btn btn-default" onclick="exportCsv('/api/export/portraits','画像报告')">导出画像CSV</button>
-          <button class="btn btn-default admin-only" onclick="document.getElementById('csvFile').click()">批量导入CSV</button>
-          <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCsv(this)">
         </div>
+
+        <!-- R30/R43：显式选择导入类型，提供模板与失败行下载 -->
+        <div class="import-panel admin-only">
+          <div class="import-type-row">
+            <label style="font-size:13px;color:#5a6b82">批量导入：</label>
+            <select id="importType" style="padding:7px 10px;border:1px solid #d8dfe8;border-radius:8px">
+              <option value="students">学生基础信息</option>
+              <option value="academic">成绩记录</option>
+              <option value="research">科研项目</option>
+              <option value="practice">实践经历</option>
+            </select>
+            <button class="btn btn-default btn-mini" onclick="downloadTemplate()">下载模板</button>
+            <button class="btn btn-primary btn-mini" onclick="document.getElementById('csvFile').click()">选择CSV导入</button>
+            <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none" onchange="importCsv(this)">
+            <span class="combo-hint">支持 UTF-8 与 GBK 编码；导入后自动重算画像</span>
+          </div>
+          <div id="importResult" class="import-result"></div>
+        </div>
+
         <table>
-          <thead><tr><th>学号</th><th>姓名</th><th>性别</th><th>学院</th><th>专业</th><th>年级</th><th>操作</th></tr></thead>
+          <thead><tr><th>学号</th><th>姓名</th><th>性别</th><th class="hide-narrow">学院</th><th class="hide-narrow">专业</th><th class="hide-narrow">年级</th><th>操作</th></tr></thead>
           <tbody id="studentTable"></tbody>
         </table>
+        <div class="pager" id="studentPager" style="display:none">
+          <button id="pagePrev" onclick="changeStudentPage(-1)">上一页</button>
+          <span id="pageInfo"></span>
+          <button id="pageNext" onclick="changeStudentPage(1)">下一页</button>
+        </div>
       </div>
       <div class="card" id="addStudentForm" style="display:none">
         <div class="card-title">添加新学生</div>
@@ -476,12 +516,14 @@
       </div>
       <div class="card" id="editStudentForm" style="display:none">
         <div class="card-title">编辑学生 <span class="count-badge" id="editStudentTitle"></span></div>
-        <div class="cfg-hint" id="editStudentHint" style="display:none">教师只能修改自己负责专业的学生信息。</div>
-        <div class="form-row"><label>姓名：</label><input type="text" id="editName"></div>
+        <div class="cfg-hint" id="editStudentHint" style="display:none">教师只能修改自己负责专业学生的姓名、性别、电话、邮箱；学院、专业、年级由管理员维护。</div>
+        <div class="form-row"><label>姓名：</label><input type="text" id="editName" maxlength="50"></div>
         <div class="form-row"><label>性别：</label><select id="editGender"><option value="M">男</option><option value="F">女</option></select></div>
-        <div class="form-row"><label>学院：</label><input type="text" id="editCollege"></div>
-        <div class="form-row"><label>专业：</label><input type="text" id="editMajor"></div>
-        <div class="form-row"><label>年级：</label><input type="number" id="editGrade"></div>
+        <div class="form-row"><label>电话：</label><input type="text" id="editPhone" maxlength="20"></div>
+        <div class="form-row"><label>邮箱：</label><input type="text" id="editEmail" maxlength="100"></div>
+        <div class="form-row"><label>学院：</label><input type="text" id="editCollege" maxlength="100" data-admin-edit></div>
+        <div class="form-row"><label>专业：</label><input type="text" id="editMajor" maxlength="100" data-admin-edit></div>
+        <div class="form-row"><label>年级：</label><input type="number" id="editGrade" data-admin-edit></div>
         <div class="form-row"><label></label><div>
           <button class="btn btn-primary" onclick="saveStudentEdit()">保存修改</button>
           <button class="btn btn-default" onclick="document.getElementById('editStudentForm').style.display='none'">取消</button>
@@ -493,6 +535,9 @@
     <div class="page" id="page-entry">
       <div class="card">
         <div class="card-title">选择学生</div>
+        <!-- R40：学生较多时先输入学号/姓名缩小范围，再在下拉里选 -->
+        <input type="text" id="entryStudentSearch" class="field-select" style="max-width:220px;margin-right:10px"
+               placeholder="输入学号或姓名过滤" oninput="filterStudentSelect(this, 'entryStudent')">
         <select id="entryStudent" class="field-select" onchange="loadStudentRecords(this.value)">
           <option value="">-- 请选择学生 --</option>
         </select>
@@ -548,6 +593,8 @@
     <div class="page" id="page-portrait">
       <div class="card">
         <div class="card-title">选择学生</div>
+        <input type="text" id="portraitStudentSearch" class="field-select" style="max-width:220px;margin-right:10px"
+               placeholder="输入学号或姓名过滤" oninput="filterStudentSelect(this, 'portraitStudent')">
         <select id="portraitStudent" class="field-select" onchange="loadPortrait()">
           <option value="">-- 请选择学生 --</option>
         </select>
@@ -562,8 +609,12 @@
         <div class="card-title">选择两名学生对比</div>
         <div class="form-row">
           <label>学生A：</label>
+          <input type="text" id="compareASearch" class="field-select" style="max-width:160px"
+                 placeholder="学号/姓名" oninput="filterStudentSelect(this, 'compareA')">
           <select id="compareA" class="field-select"><option value="">-- 请选择 --</option></select>
           <label>学生B：</label>
+          <input type="text" id="compareBSearch" class="field-select" style="max-width:160px"
+                 placeholder="学号/姓名" oninput="filterStudentSelect(this, 'compareB')">
           <select id="compareB" class="field-select"><option value="">-- 请选择 --</option></select>
           <button class="btn btn-primary" onclick="doCompare()">开始对比</button>
         </div>
@@ -589,7 +640,7 @@
       <div class="card" id="addUserForm" style="display:none">
         <div class="card-title">新建用户</div>
         <div class="form-row"><label>用户名：</label><input type="text" id="newUsername" placeholder="3-50 个字符"></div>
-        <div class="form-row"><label>密码：</label><input type="password" id="newUserPwd" placeholder="至少 6 位"></div>
+        <div class="form-row"><label>密码：</label><input type="password" id="newUserPwd" placeholder="至少 8 位"></div>
         <div class="form-row"><label>角色：</label>
           <select id="newUserRole">
             <option value="student">学生</option>
@@ -606,7 +657,7 @@
       </div>
       <div class="card" id="bulkImportForm" style="display:none">
         <div class="card-title">批量导入账号</div>
-        <div class="cfg-hint">每行一条：用户名,密码,学号/工号。导入学生时第三列填学号，导入教师时填工号；首行可以写表头，会自动跳过。</div>
+        <div class="cfg-hint">每行一条：用户名,密码,学号/工号。导入学生时第三列填学号，导入教师时填工号；首行可以写表头，会自动跳过。初始密码至少 8 位。</div>
         <div class="form-row"><label>导入类型：</label>
           <select id="bulkRole">
             <option value="student">学生账号</option>
@@ -653,8 +704,8 @@
         <div class="form-row"><label>性别：</label>
           <select id="myGender">
             <option value="">未设置</option>
-            <option value="男">男</option>
-            <option value="女">女</option>
+            <option value="M">男</option>
+            <option value="F">女</option>
           </select>
         </div>
         <div class="form-row"><label></label>
@@ -725,11 +776,24 @@
   <div class="modal">
     <div class="modal-title">修改密码</div>
     <div class="form-row"><label>原密码：</label><input type="password" id="oldPwd" placeholder="请输入原密码"></div>
-    <div class="form-row"><label>新密码：</label><input type="password" id="newPwd" placeholder="至少 6 位"></div>
+    <div class="form-row"><label>新密码：</label><input type="password" id="newPwd" placeholder="至少 8 位"></div>
     <div class="form-row"><label>确认新密码：</label><input type="password" id="confirmPwd" placeholder="再次输入新密码"></div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="changePassword()">确认修改</button>
       <button class="btn btn-default" onclick="closeChangePwd()">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- R42：删除学生前展示影响范围并要求输入学号确认 -->
+<div class="modal-mask" id="delStudentModal" style="display:none">
+  <div class="modal">
+    <div class="modal-title">删除学生确认</div>
+    <div id="delStudentInfo" style="font-size:13px;color:#5a6b82;line-height:1.9"></div>
+    <div class="form-row" style="margin-top:14px"><label>输入学号确认：</label><input type="text" id="delConfirmSid" placeholder="请输入要删除的学号"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="confirmDeleteStudent()">确认删除</button>
+      <button class="btn btn-default" onclick="closeDelStudent()">取消</button>
     </div>
   </div>
 </div>
@@ -766,7 +830,8 @@ async function changePassword() {
   const confirmPwd = document.getElementById('confirmPwd').value;
 
   if (!oldPassword || !newPassword || !confirmPwd) return toast('请填写完整', 'error');
-  if (newPassword.length < 6) return toast('新密码至少6位', 'error');
+  if (newPassword.length < 8) return toast('新密码至少8位', 'error');
+  if (/^(\d)\1+$/.test(newPassword)) return toast('密码不能是重复的数字', 'error');
   if (newPassword !== confirmPwd) return toast('两次输入的新密码不一致', 'error');
   if (newPassword === oldPassword) return toast('新密码不能与原密码相同', 'error');
 
@@ -815,7 +880,11 @@ function activatePage(page) {
   if (target) target.classList.add('active');
 
   if (page === 'dashboard') loadDashboard();
-  if (page === 'students') { loadStudents(); loadTeacherMajors(); }
+  // 教师要先拿到负责专业，才能正确判断哪些学生可编辑
+  if (page === 'students') { loadTeacherMajors().then(() => loadStudents(1)); }
+  if (page === 'portrait') ensureAllStudents();
+  if (page === 'entry') ensureAllStudents();
+  if (page === 'compare') ensureAllStudents();
   if (page === 'users') loadUsers();
   if (page === 'myprofile') loadMyProfile();
   if (page === 'settings') loadSettings();
@@ -882,12 +951,50 @@ async function api(url, method = 'GET', data = null) {
     },
   };
   if (data) opts.body = JSON.stringify(data);
-  const res = await fetch(url, opts);
+
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (e) {
+    // 网络中断时给出可读提示，而不是让调用方抛原生错误
+    return { code: 0, message: '无法连接服务器，请检查后端是否已启动' };
+  }
+
   if (res.status === 401) {
     logout();
-    throw new Error('登录已过期');
+    return { code: 401, message: '登录已过期，请重新登录' };
   }
-  return res.json();
+
+  let body;
+  try {
+    body = await res.json();
+  } catch (e) {
+    return { code: res.status, message: '服务器返回格式异常（HTTP ' + res.status + '）' };
+  }
+
+  if (body && body.code === undefined) body.code = res.status;
+  return body;
+}
+
+// 性别展示：M/F 映射为中文，未知值显示"未填写"而不是默认成女（R13）
+function genderLabel(g) {
+  if (g === 'M' || g === '男') return '男';
+  if (g === 'F' || g === '女') return '女';
+  return '未填写';
+}
+
+// 统一读取当前学生筛选条件，供列表与导出复用（R11）
+function currentStudentQuery() {
+  const search = (document.getElementById('searchInput') || {}).value || '';
+  const college = (document.getElementById('filterCollege') || {}).value || '';
+  const major = (document.getElementById('filterMajor') || {}).value || '';
+  const grade = (document.getElementById('filterGrade') || {}).value || '';
+  return {
+    search: search.trim(),
+    college,
+    major,
+    grade,
+  };
 }
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -902,35 +1009,83 @@ document.querySelectorAll('.tab').forEach(tab => {
 // 页面加载后按角色初始化界面
 initRole();
 
-async function loadStudents(filter = '') {
-  const data = await api('/api/students');
-  students = data.data;
+// ========== 学生列表：服务端分页 + 筛选（R38） ==========
+const PAGE_SIZE = 50;
+let studentPage = 1;
+let studentTotal = 0;
+let studentRows = [];
+let studentSearchTimer = null;
 
-  // 填充学院 / 年级下拉（数据变化时才重建，保留当前选中）
-  fillFilters();
-  const college = document.getElementById('filterCollege').value;
-  const major = document.getElementById('filterMajor').value;
-  const grade = document.getElementById('filterGrade').value;
-  const list = students.filter(s =>
-    (!filter || s.name.includes(filter) || s.student_id.includes(filter)) &&
-    (!college || s.college === college) &&
-    (!major || s.major === major) &&
-    (!grade || String(s.grade) === grade)
-  );
+function currentStudentQuery() {
+  return {
+    search: (document.getElementById('searchInput') || {}).value || '',
+    college: (document.getElementById('filterCollege') || {}).value || '',
+    major: (document.getElementById('filterMajor') || {}).value || '',
+    grade: (document.getElementById('filterGrade') || {}).value || '',
+  };
+}
 
-  const countEl = document.getElementById('studentCount');
-  if (countEl) {
-    countEl.textContent = (filter || college || major || grade)
-      ? `${list.length} / ${students.length} 人`
-      : `${students.length} 人`;
+function scheduleStudentSearch() {
+  clearTimeout(studentSearchTimer);
+  studentSearchTimer = setTimeout(() => loadStudents(1), 350);
+}
+
+// 全量学生用于下拉与编辑（管理员取全量，教师只取本专业，R31）
+async function ensureAllStudents(force = false) {
+  if (students.length && !force) {
+    fillStudentSelects();
+    return students;
   }
+  let res;
+  if (CURRENT_ROLE === 'teacher') {
+    res = await api('/api/teachers/my-students');
+    students = (res.code === 200 && res.data && res.data.students) || [];
+  } else {
+    res = await api('/api/students');
+    students = (res.code === 200 && Array.isArray(res.data)) ? res.data : [];
+  }
+  fillFilters();
+  fillStudentSelects();
+  return students;
+}
 
+function fillStudentSelects() {
+  ['entryStudent', 'portraitStudent', 'compareA', 'compareB'].forEach((id) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- 请选择学生 --</option>' +
+      students.map((s) => `<option value="${esc(s.student_id)}">${esc(s.student_id)} ${esc(s.name)}</option>`).join('');
+    sel.value = cur;
+    // 选项重建后清掉上一次的过滤状态（R40）
+    Array.from(sel.options).forEach((o) => { o.hidden = false; });
+  });
+}
+
+// R40：输入学号/姓名即时过滤下拉选项，避免上百条选项只能滚动
+function filterStudentSelect(input, selectId) {
+  const kw = String(input.value || '').trim().toLowerCase();
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+
+  Array.from(sel.options).forEach((o) => {
+    if (o.value === '') return;
+    o.hidden = kw ? !o.textContent.toLowerCase().includes(kw) : false;
+  });
+
+  // 当前选中项被过滤掉时清空选择，避免"选了看不见的学生"
+  const chosen = Array.from(sel.options).find((o) => o.value === sel.value);
+  if (kw && chosen && chosen.hidden) sel.value = '';
+}
+
+function renderStudentTable(list) {
   const tbody = document.getElementById('studentTable');
-  tbody.innerHTML = '';
+  if (!tbody) return;
   if (list.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">没有符合条件的学生</td></tr>';
+    return;
   }
-  list.forEach(s => {
+  tbody.innerHTML = list.map((s) => {
     // 管理员可增删改；教师只能编辑自己负责专业的学生
     const canEdit = CURRENT_ROLE === 'admin'
       || (CURRENT_ROLE === 'teacher' && teacherMajors.includes(s.major));
@@ -942,19 +1097,66 @@ async function loadStudents(filter = '') {
       actions += `<button class="btn btn-danger btn-mini" data-sid="${esc(s.student_id)}" onclick="delStudent(this.dataset.sid)" style="margin-left:6px">删除</button>`;
     }
     if (!actions) actions = '<span style="color:#9aa7bd">—</span>';
-    tbody.innerHTML += `<tr>
-      <td>${esc(s.student_id)}</td><td>${esc(s.name)}</td><td>${s.gender === 'M' ? '男' : '女'}</td>
-      <td>${esc(s.college)}</td><td>${esc(s.major)}</td><td>${esc(s.grade)}</td>
+    return `<tr>
+      <td>${esc(s.student_id)}</td><td>${esc(s.name)}</td><td>${genderLabel(s.gender)}</td>
+      <td class="hide-narrow">${esc(s.college)}</td><td class="hide-narrow">${esc(s.major)}</td><td class="hide-narrow">${esc(s.grade)}</td>
       <td>${actions}</td>
     </tr>`;
-  });
-  ['entryStudent', 'portraitStudent', 'compareA', 'compareB'].forEach(id => {
-    const sel = document.getElementById(id);
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">-- 请选择学生 --</option>' +
-      students.map(s => `<option value="${esc(s.student_id)}">${esc(s.student_id)} ${esc(s.name)}</option>`).join('');
-    sel.value = cur;
-  });
+  }).join('');
+}
+
+function renderPager() {
+  const pager = document.getElementById('studentPager');
+  if (!pager) return;
+  if (studentTotal <= PAGE_SIZE) {
+    pager.style.display = 'none';
+    return;
+  }
+  pager.style.display = 'flex';
+  const pages = Math.max(1, Math.ceil(studentTotal / PAGE_SIZE));
+  document.getElementById('pageInfo').textContent = `第 ${studentPage} / ${pages} 页，共 ${studentTotal} 人`;
+  document.getElementById('pagePrev').disabled = studentPage <= 1;
+  document.getElementById('pageNext').disabled = studentPage >= pages;
+}
+
+function changeStudentPage(delta) {
+  loadStudents(studentPage + delta);
+}
+
+async function loadStudents(page = 1) {
+  studentPage = Math.max(1, Number(page) || 1);
+  const q = currentStudentQuery();
+
+  const params = new URLSearchParams({ withMeta: '1', page: String(studentPage), pageSize: String(PAGE_SIZE) });
+  if (q.search) params.set('search', q.search.trim());
+  if (q.college) params.set('college', q.college);
+  if (q.major) params.set('major', q.major);
+  if (q.grade) params.set('grade', q.grade);
+
+  const res = await api('/api/students?' + params.toString());
+  if (res.code !== 200) {
+    toast(res.message || '学生列表加载失败', 'error');
+    document.getElementById('studentTable').innerHTML = '<tr><td colspan="7" class="empty-cell">加载失败，请稍后重试</td></tr>';
+    return;
+  }
+
+  const payload = res.data;
+  studentRows = Array.isArray(payload) ? payload : (payload.items || []);
+  studentTotal = Array.isArray(payload) ? studentRows.length : (payload.total || 0);
+
+  renderStudentTable(studentRows);
+  renderPager();
+
+  const countEl = document.getElementById('studentCount');
+  if (countEl) {
+    const filtered = q.search.trim() || q.college || q.major || q.grade;
+    countEl.textContent = filtered ? `${studentTotal} 人（已筛选）` : `${studentTotal} 人`;
+  }
+
+  // 下拉需要全量数据，首次加载时补一次
+  if (students.length === 0) {
+    await ensureAllStudents(true);
+  }
 }
 
 // 学院 / 专业 / 年级下拉选项，按现有数据动态生成；专业跟随学院联动
@@ -1021,17 +1223,26 @@ async function loadTeacherMajors() {
 }
 
 function openEditStudent(sid) {
-  const s = students.find((x) => String(x.student_id) === String(sid));
+  const s = students.find((x) => String(x.student_id) === String(sid))
+    || studentRows.find((x) => String(x.student_id) === String(sid));
   if (!s) return toast('学生不存在', 'error');
 
   editingStudentId = s.student_id;
   document.getElementById('editStudentTitle').textContent = s.student_id;
   document.getElementById('editStudentHint').style.display = CURRENT_ROLE === 'teacher' ? 'block' : 'none';
   document.getElementById('editName').value = s.name || '';
-  document.getElementById('editGender').value = s.gender === 'F' ? 'F' : 'M';
+  // R13：只认 M/F，未知值不默认成女
+  document.getElementById('editGender').value = s.gender === 'F' ? 'F' : (s.gender === 'M' ? 'M' : '');
+  document.getElementById('editPhone').value = s.phone || '';
+  document.getElementById('editEmail').value = s.email || '';
   document.getElementById('editCollege').value = s.college || '';
   document.getElementById('editMajor').value = s.major || '';
   document.getElementById('editGrade').value = s.grade || '';
+
+  // R18：教师不能修改专业/学院/年级
+  document.querySelectorAll('#editStudentForm [data-admin-edit]').forEach((el) => {
+    el.disabled = CURRENT_ROLE !== 'admin';
+  });
 
   const form = document.getElementById('editStudentForm');
   form.style.display = 'block';
@@ -1041,23 +1252,30 @@ function openEditStudent(sid) {
 async function saveStudentEdit() {
   if (!editingStudentId) return toast('请先选择学生', 'error');
 
+  // R04：只提交允许修改的字段，未提交的字段后端不会覆盖
   const data = {
     name: document.getElementById('editName').value.trim(),
     gender: document.getElementById('editGender').value,
-    college: document.getElementById('editCollege').value.trim(),
-    major: document.getElementById('editMajor').value.trim(),
-    grade: document.getElementById('editGrade').value,
+    phone: document.getElementById('editPhone').value.trim(),
+    email: document.getElementById('editEmail').value.trim(),
   };
   if (!data.name) return toast('姓名不能为空', 'error');
+
+  if (CURRENT_ROLE === 'admin') {
+    data.college = document.getElementById('editCollege').value.trim();
+    data.major = document.getElementById('editMajor').value.trim();
+    data.grade = document.getElementById('editGrade').value;
+  }
 
   const res = await api('/api/students/' + encodeURIComponent(editingStudentId), 'PUT', data);
   if (res.code === 200) {
     toast('学生信息已更新');
     document.getElementById('editStudentForm').style.display = 'none';
     editingStudentId = null;
-    loadStudents();
+    await ensureAllStudents(true);
+    loadStudents(studentPage);
   } else {
-    toast(res.message, 'error');
+    toast(res.message || '保存失败', 'error');
   }
 }
 
@@ -1102,67 +1320,219 @@ function csvToObjects(rows) {
   });
 }
 
-// 按表头识别数据类型
-const IMPORT_ENDPOINTS = [
-  { url: '/api/import/students', need: ['student_id', 'name'], label: '学生' },
-  { url: '/api/import/academic', need: ['student_id', 'course_name'], label: '成绩' },
-  { url: '/api/import/research', need: ['student_id', 'project_name'], label: '科研' },
-  { url: '/api/import/practice', need: ['student_id', 'activity_name'], label: '实践' },
-];
+// R30：导入类型由用户显式选择，不再靠表头猜测；R43：提供模板与失败行下载
+const IMPORT_TEMPLATES = {
+  students: {
+    label: '学生基础信息',
+    required: ['student_id', 'name'],
+    headers: ['student_id', 'name', 'gender', 'college', 'major', 'grade', 'phone', 'email'],
+    sample: [['2022099', '张示例', 'M', '计算机学院', '物联网工程', '2022', '13800000000', 'demo@example.com']],
+  },
+  academic: {
+    label: '成绩记录',
+    required: ['student_id', 'course_name', 'credit', 'score'],
+    headers: ['student_id', 'course_name', 'credit', 'score', 'semester'],
+    sample: [['2022099', '高等数学', '4', '88', '2026-1']],
+  },
+  research: {
+    label: '科研项目',
+    required: ['student_id', 'project_name'],
+    headers: ['student_id', 'project_name', 'role', 'level', 'start_date', 'end_date', 'result'],
+    sample: [['2022099', '智能农业监测', '成员', '校级', '2026-03-01', '2026-06-30', '结题']],
+  },
+  practice: {
+    label: '实践经历',
+    required: ['student_id', 'activity_name'],
+    headers: ['student_id', 'activity_name', 'type', 'start_date', 'end_date', 'hours', 'description'],
+    sample: [['2022099', '暑期实习', '实习', '2026-07-01', '2026-08-31', '160', '企业实习']],
+  },
+};
+
+let failedImportRows = null;
+
+function csvEscape(v) {
+  const s = String(v === null || v === undefined ? '' : v);
+  if (/^[=+\-@\t\r]/.test(s)) return "'" + s.replace(/"/g, '""');
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function downloadTemplate() {
+  const type = document.getElementById('importType').value;
+  const tpl = IMPORT_TEMPLATES[type];
+  const csv = '\uFEFF' + [tpl.headers.join(','), ...tpl.sample.map((r) => r.map(csvEscape).join(','))].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = tpl.label + '-模板.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
+// R09：先按 UTF-8 严格解码，失败回退 GBK/GB18030，仍失败则拒绝导入
+async function readCsvText(file) {
+  const buf = await file.arrayBuffer();
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch (e) {
+    try {
+      const text = new TextDecoder('gbk').decode(buf);
+      if (text.includes('\uFFFD')) throw new Error('decode failed');
+      return text;
+    } catch (e2) {
+      throw new Error('无法识别文件编码，请用 Excel 另存为 UTF-8 CSV 后重试');
+    }
+  }
+}
+
+function renderImportResult(type, data) {
+  const panel = document.getElementById('importResult');
+  if (!panel) return;
+  const d = data || {};
+  let html = `<div class="cfg-hint">共 ${d.total || 0} 行：成功 <b>${d.success || 0}</b> 行，失败 <b>${d.failed || 0}</b> 行`
+    + (d.recalculated ? `，已重算 ${d.recalculated} 名学生画像` : '') + '。</div>';
+
+  if (d.errors && d.errors.length) {
+    html += `<div class="import-errors">${d.errors.map((e) => `${esc(e.row)}：${esc(e.message)}`).join('<br>')}</div>`;
+    html += '<button class="btn btn-default btn-mini" style="margin-top:10px" onclick="downloadFailedRows()">下载失败行CSV</button>';
+    failedImportRows = { type, errors: d.errors };
+  } else {
+    failedImportRows = null;
+  }
+  panel.innerHTML = html;
+}
+
+function downloadFailedRows() {
+  if (!failedImportRows) return;
+  const tpl = IMPORT_TEMPLATES[failedImportRows.type];
+  const lines = [['行号', ...tpl.headers, '失败原因'].map(csvEscape).join(',')];
+  for (const e of failedImportRows.errors) {
+    const idx = parseInt(String(e.row).replace(/[^0-9]/g, ''), 10) - 2;
+    const row = currentImportObjects[idx] || {};
+    lines.push([e.row, ...tpl.headers.map((h) => row[h] || ''), e.message].map(csvEscape).join(','));
+  }
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '导入失败行.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
+let currentImportObjects = [];
 
 async function importCsv(input) {
   const file = input.files && input.files[0];
   if (!file) return;
 
-  try {
-    const text = await file.text();
-    const rows = parseCsv(text);
-    if (rows.length < 2) { toast('CSV 里没有数据行', 'error'); return; }
+  const type = document.getElementById('importType').value;
+  const tpl = IMPORT_TEMPLATES[type];
+  const panel = document.getElementById('importResult');
 
-    const objs = csvToObjects(rows);
-    const keys = Object.keys(objs[0]);
-    const target = IMPORT_ENDPOINTS.find(t => t.need.every(k => keys.includes(k)));
-    if (!target) {
-      toast('无法识别表头，请使用学生/成绩/科研/实践模板', 'error');
+  try {
+    if (file.size > 10 * 1024 * 1024) throw new Error('文件超过 10MB，请拆分后导入');
+    const text = await readCsvText(file);
+    const rows = parseCsv(text);
+    if (rows.length < 2) throw new Error('CSV 里没有数据行');
+
+    const headers = rows[0].map((h) => h.trim());
+    const missing = tpl.required.filter((h) => !headers.includes(h));
+    if (missing.length) {
+      throw new Error(`表头缺少 ${missing.join('、')}，请下载「${tpl.label}」模板后填写`);
+    }
+
+    // 转对象时保留原始列顺序，便于失败行回写
+    const objects = rows.slice(1).map((r) => {
+      const o = {};
+      headers.forEach((h, i) => { o[h] = (r[i] === undefined ? '' : String(r[i])).trim(); });
+      return o;
+    });
+    if (objects.length > 5000) throw new Error('单次最多导入 5000 行，请拆分文件');
+
+    currentImportObjects = objects;
+    if (panel) panel.innerHTML = `<div class="cfg-hint">正在导入${tpl.label}（${objects.length} 行）…</div>`;
+
+    const res = await api('/api/import/' + type, 'POST', { rows: objects });
+    if (res.code !== 200) {
+      if (panel) panel.innerHTML = `<div class="import-errors">${esc(res.message || '导入失败')}</div>`;
       return;
     }
 
-    toast(`正在导入${target.label}数据（${objs.length} 行）...`);
-    const res = await api(target.url, 'POST', { rows: objs });
-    if (res.code === 200) {
-      toast(res.message);
-      if (target.label === '学生') loadStudents(document.getElementById('searchInput').value);
-      if (res.data && res.data.errors && res.data.errors.length) {
-        console.warn('导入失败行：', res.data.errors);
-      }
-    } else {
-      toast(res.message || '导入失败', 'error');
-    }
+    renderImportResult(type, res.data);
+    toast(res.message || '导入完成');
+
+    await ensureAllStudents(true);
+    loadStudents(1);
   } catch (err) {
-    toast('导入出错：' + err.message, 'error');
+    if (panel) panel.innerHTML = `<div class="import-errors">${esc(err.message)}</div>`;
+    toast(err.message, 'error');
   } finally {
-    input.value = ''; // 允许重复选同一个文件
+    input.value = '';
   }
 }
 
 async function addStudent() {
   const data = {
-    student_id: document.getElementById('newSid').value,
-    name: document.getElementById('newName').value,
+    student_id: document.getElementById('newSid').value.trim(),
+    name: document.getElementById('newName').value.trim(),
     gender: document.getElementById('newGender').value,
-    college: document.getElementById('newCollege').value,
-    major: document.getElementById('newMajor').value,
+    college: document.getElementById('newCollege').value.trim(),
+    major: document.getElementById('newMajor').value.trim(),
     grade: document.getElementById('newGrade').value,
   };
+  if (!data.student_id || !data.name) return toast('学号和姓名不能为空', 'error');
   const res = await api('/api/students', 'POST', data);
-  if (res.code === 200) { toast('学生添加成功'); document.getElementById('addStudentForm').style.display = 'none'; loadStudents(); }
-  else toast(res.message, 'error');
+  if (res.code === 200) {
+    toast('学生添加成功');
+    document.getElementById('addStudentForm').style.display = 'none';
+    await ensureAllStudents(true);
+    loadStudents(1);
+  } else {
+    toast(res.message || '添加失败', 'error');
+  }
 }
 
+// ========== 删除学生：先查影响范围，再输入学号确认（R42） ==========
+let pendingDeleteSid = null;
+
 async function delStudent(sid) {
-  if (!confirm('确认删除该学生？相关数据也会被删除')) return;
-  await api('/api/students/' + sid, 'DELETE');
-  toast('删除成功'); loadStudents();
+  const res = await api('/api/students/' + encodeURIComponent(sid) + '/impact');
+  if (res.code !== 200) return toast(res.message || '无法获取删除影响范围', 'error');
+
+  const d = res.data;
+  pendingDeleteSid = String(sid);
+  document.getElementById('delStudentInfo').innerHTML =
+    `将删除 <b>${esc(sid)}</b> 及其关联数据：` +
+    `成绩 ${d.academic_records} 条、科研 ${d.research_projects} 项、实践 ${d.practice_activities} 项、` +
+    `画像 ${d.profiles} 条、推荐 ${d.recommendations} 条` +
+    (d.accounts && d.accounts.length ? `；账号 ${d.accounts.map(esc).join('、')} 将被解绑并停用` : '') +
+    '。<br>该操作不可撤销。';
+  document.getElementById('delConfirmSid').value = '';
+  document.getElementById('delStudentModal').style.display = 'flex';
+}
+
+function closeDelStudent() {
+  pendingDeleteSid = null;
+  document.getElementById('delStudentModal').style.display = 'none';
+}
+
+async function confirmDeleteStudent() {
+  if (!pendingDeleteSid) return;
+  const typed = document.getElementById('delConfirmSid').value.trim();
+  if (typed !== pendingDeleteSid) return toast('输入的学号与要删除的学生不一致', 'error');
+
+  const res = await api('/api/students/' + encodeURIComponent(pendingDeleteSid), 'DELETE');
+  if (res.code === 200) {
+    toast(res.message || '删除成功');
+    closeDelStudent();
+    await ensureAllStudents(true);
+    loadStudents(studentPage);
+  } else {
+    toast(res.message || '删除失败', 'error');
+  }
 }
 
 // ========== 数据录入 ==========
@@ -1187,6 +1557,16 @@ async function loadStudentRecords(sid) {
     api('/api/research/' + sid),
     api('/api/practice/' + sid),
   ]);
+
+  // R35/R54：任何一类记录返回非 200 都直接给出可读提示，不再当成“暂无记录”
+  const bad = [ac, rs, pr].find((r) => r && r.code !== 200);
+  if (bad) {
+    ['academicList', 'researchList', 'practiceList'].forEach((id) => {
+      document.getElementById(id).innerHTML = `<div class="empty">${esc(bad.message || '记录加载失败')}</div>`;
+    });
+    summary.textContent = '';
+    return;
+  }
 
   const acRows = (ac && ac.data) || [];
   const rsRows = (rs && rs.data) || [];
@@ -1391,20 +1771,32 @@ async function calculatePortrait() {
 async function loadPortrait() {
   const sid = document.getElementById('portraitStudent').value;
   if (!sid) return;
-  const res = await api('/api/portrait/' + sid);
   const box = document.getElementById('portraitResult');
-  if (res.code === 404) { box.innerHTML = '<div class="empty">该学生暂无画像数据，点击"重新计算画像"按钮生成</div>'; return; }
-  const p = res.data;
+  const res = await api('/api/portrait/' + sid);
+
+  // R54：除 404 之外也要处理 403/500/网络错误，不能让脚本继续访问 undefined
+  if (res.code !== 200) {
+    const hint = res.code === 404
+      ? '该学生暂无画像数据，可点击“重新计算画像”生成'
+      : (res.message || '画像加载失败，请稍后重试');
+    box.innerHTML = `<div class="empty">${esc(hint)}</div>`;
+    return;
+  }
+
+  const p = res.data || {};
   // rates 由后端按各维标准分换算，0-100，三个维度同一把尺子
   const rates = p.rates || { academic: 0, research: 0, practice: 0 };
+  // R14：分母取接口返回的当前 limits，不在页面里写死 25 / 100
+  const limits = p.limits || { academicScore: 25, researchScore: 100, practiceScore: 100 };
+
   box.innerHTML = `
     <div class="card">
-      <div class="card-title">${esc(p.name)} - 能力画像</div>
+      <div class="card-title">${esc(p.name)} - 能力画像${p.stale ? '<span class="count-badge" style="color:#c0392b;border-color:#e8b4ae">按旧配置计算，待重算</span>' : ''}</div>
       <div class="score-cards">
         <div class="score-card"><div class="label">GPA</div><div class="value">${p.gpa}</div><div class="hint">4.0 制</div></div>
-        <div class="score-card"><div class="label">学业能力</div><div class="value">${rates.academic}</div><div class="hint">得分率(%) · 原始 ${p.academic_score}/25</div></div>
-        <div class="score-card"><div class="label">科研能力</div><div class="value">${rates.research}</div><div class="hint">得分率(%) · 原始 ${p.research_score}/100</div></div>
-        <div class="score-card"><div class="label">实践能力</div><div class="value">${rates.practice}</div><div class="hint">得分率(%) · 原始 ${p.practice_score}/100</div></div>
+        <div class="score-card"><div class="label">学业能力</div><div class="value">${rates.academic}</div><div class="hint">得分率(%) · 原始 ${p.academic_score}/${limits.academicScore}</div></div>
+        <div class="score-card"><div class="label">科研能力</div><div class="value">${rates.research}</div><div class="hint">得分率(%) · 原始 ${p.research_score}/${limits.researchScore}</div></div>
+        <div class="score-card"><div class="label">实践能力</div><div class="value">${rates.practice}</div><div class="hint">得分率(%) · 原始 ${p.practice_score}/${limits.practiceScore}</div></div>
         <div class="score-card"><div class="label">综合总分</div><div class="value">${p.total_score}</div><div class="hint">归一加权 · 满分 100</div></div>
       </div>
       <div id="radar"></div>
@@ -1437,7 +1829,7 @@ async function loadPortrait() {
   const histRes = await api('/api/portrait/career-history/' + sid);
   const histBox = document.getElementById('careerHistory');
   const batches = histRes.code === 200 ? histRes.data : [];
-  if (batches.length > 1) {
+  if (histBox && Array.isArray(batches) && batches.length > 1) {
     histBox.innerHTML = `<div class="history-title">历史推荐（${batches.length - 1} 次）</div>` +
       batches.slice(1).map(b => `
         <div class="history-batch">
@@ -1448,8 +1840,6 @@ async function loadPortrait() {
     histBox.innerHTML = '';
   }
 }
-
-document.getElementById('searchInput').oninput = (e) => loadStudents(e.target.value);
 
 // 图表工具：CDN 未加载时给出提示而不是让整个脚本崩掉
 function makeChart(elOrId) {
@@ -1522,7 +1912,9 @@ async function loadDashboard() {
   const d = res.data;
 
   const scope = [college, major, grade ? grade + ' 级' : '', semester].filter(Boolean).join(' / ');
-  document.getElementById('dashScopeHint').textContent = scope ? '当前范围：' + scope : '';
+  // R28：学期只影响成绩记录条数，均值/分布/TOP5 仍按学生维度，界面上要说清楚
+  const semesterNote = semester ? '（学期只过滤“成绩记录”条数，均值、分布、TOP5 仍按学生维度统计）' : '';
+  document.getElementById('dashScopeHint').textContent = (scope ? '当前范围：' + scope : '') + semesterNote;
 
   // 统计卡片
   document.getElementById('statCards').innerHTML = `
@@ -1613,8 +2005,10 @@ async function doCompare() {
   const [ra, rb] = await Promise.all([api('/api/portrait/' + a), api('/api/portrait/' + b)]);
 
   const box = document.getElementById('compareResult');
-  if (ra.code === 404 || rb.code === 404) {
-    box.innerHTML = '<div class="empty">其中一名学生还没有画像数据，请先在"画像分析"中计算</div>';
+  // R54：任一请求非 200 都给出可读提示，避免继续访问 undefined
+  if (ra.code !== 200 || rb.code !== 200) {
+    const first = ra.code !== 200 ? ra : rb;
+    box.innerHTML = `<div class="empty">${esc(first.message || '对比数据加载失败')}</div>`;
     return;
   }
 
@@ -1708,7 +2102,7 @@ async function createUser() {
     teacher_no: document.getElementById('newUserTno').value.trim(),
   };
   if (!data.username) return toast('请填写用户名', 'error');
-  if (data.password.length < 6) return toast('密码至少6位', 'error');
+  if (data.password.length < 8) return toast('密码至少8位', 'error');
   if (data.role === 'teacher' && !data.teacher_no) return toast('教师账号必须填写工号', 'error');
 
   const res = await api('/api/users', 'POST', data);
@@ -1750,19 +2144,26 @@ async function doBulkImport() {
   }
   if (rows.length === 0) return toast('没有可导入的有效行', 'error');
 
+  // R37：密码策略统一为至少 8 位，前端先拦一遍，避免整批提交后才发现
+  const shortPwd = rows.filter((r) => !r.password || r.password.length < 8).length;
+  if (shortPwd > 0) {
+    return toast(`有 ${shortPwd} 行初始密码不足 8 位，请修正后再导入`, 'error');
+  }
+
   const res = await api('/api/users/bulk-import', 'POST', { role, rows });
   const box = document.getElementById('bulkResult');
   if (res.code !== 200) {
-    box.innerHTML = `<div class="cfg-hint" style="color:#dc2626">${esc(res.message)}</div>`;
+    box.innerHTML = `<div class="cfg-hint" style="color:#dc2626">${esc(res.message || '批量导入失败')}</div>`;
     return;
   }
 
-  const d = res.data;
-  const failedHtml = d.failed.length
-    ? `<div class="cfg-hint" style="color:#dc2626;line-height:1.9">${d.failed.map((f) => esc(f.row + '：' + f.reason)).join('<br>')}</div>`
+  const d = res.data || {};
+  const failed = d.failed || [];
+  const failedHtml = failed.length
+    ? `<div class="cfg-hint" style="color:#dc2626;line-height:1.9">${failed.map((f) => esc((f.row || '') + '：' + (f.reason || f.message || ''))).join('<br>')}</div>`
     : '';
-  box.innerHTML = `<div class="cfg-hint" style="color:#16a34a">${esc(res.message)}</div>${failedHtml}`;
-  toast(`导入完成：成功 ${d.created} 条，失败 ${d.failed.length} 条`);
+  box.innerHTML = `<div class="cfg-hint" style="color:#16a34a">${esc(res.message || '')}</div>${failedHtml}`;
+  toast(`导入完成：成功 ${d.created || 0} 条，失败 ${failed.length} 条`, failed.length ? 'error' : 'success');
   loadUsers();
 }
 
@@ -1804,13 +2205,14 @@ async function loadTeachers() {
   }
 
   const rows = res.data || [];
-  box.innerHTML = '<table><thead><tr><th>工号</th><th>姓名</th><th>学院</th><th>职称</th><th>负责专业</th><th>绑定账号</th></tr></thead><tbody>'
+  box.innerHTML = '<table><thead><tr><th>工号</th><th>姓名</th><th>学院</th><th>职称</th><th>负责专业</th><th>状态</th><th>绑定账号</th></tr></thead><tbody>'
     + rows.map((t) => `<tr>
         <td>${esc(t.teacher_no)}</td>
         <td>${esc(t.name)}</td>
         <td>${esc(t.college || '-')}</td>
         <td>${esc(t.title || '-')}</td>
         <td>${esc(t.majors || '未设置')}</td>
+        <td>${Number(t.status) === 0 ? '<span style="color:#dc2626">停用</span>' : '<span style="color:#16a34a">启用</span>'}</td>
         <td>${esc(t.account || '未注册')}</td>
       </tr>`).join('')
     + '</tbody></table>';
@@ -1839,9 +2241,9 @@ async function toggleUserStatus(id, status) {
 }
 
 async function resetUserPwd(id, username) {
-  const newPassword = prompt(`为「${username}」设置新密码（至少 6 位）`);
+  const newPassword = prompt(`为「${username}」设置新密码（至少 8 位）`);
   if (!newPassword) return;
-  if (newPassword.length < 6) return toast('新密码至少6位', 'error');
+  if (newPassword.length < 8) return toast('新密码至少8位', 'error');
 
   const res = await api('/api/users/' + id + '/reset-password', 'POST', { newPassword });
   toast(res.code === 200 ? '密码已重置' : res.message, res.code === 200 ? 'success' : 'error');
@@ -1881,14 +2283,17 @@ async function loadMyProfile() {
   const body = document.getElementById('myProfileBody');
 
   if (res.code !== 200) {
-    body.innerHTML = `<div class="empty">${res.message || '加载失败'}</div>`;
+    // R50：错误文案同样要转义后再插入 DOM
+    body.innerHTML = `<div class="empty">${esc(res.message || '加载失败')}</div>`;
     return;
   }
 
-  const { student, portrait, rates, career, career_batch_at } = res.data;
+  const { student, portrait, rates, career, career_batch_at, limits } = res.data;
+  const full = limits || { academicScore: 25, researchScore: 100, practiceScore: 100 };
   document.getElementById('myProfileTitle').textContent = `${student.name} - 我的能力画像`;
   document.getElementById('myName').value = student.name || '';
-  document.getElementById('myGender').value = student.gender || '';
+  // R13：只回填 M/F，未知值留空
+  document.getElementById('myGender').value = student.gender === 'M' || student.gender === 'F' ? student.gender : '';
 
   if (!portrait) {
     body.innerHTML = `<div class="empty">${esc(student.student_id)} ${esc(student.name)}（${esc(student.college)} ${esc(student.major)}）还没有生成画像，请联系管理员生成</div>`;
@@ -1898,9 +2303,9 @@ async function loadMyProfile() {
       <div class="empty" style="text-align:left;padding:0 0 14px">${esc(student.student_id)}　${esc(student.name)}　${esc(student.college)}　${esc(student.major)}　${esc(student.grade)} 级</div>
       <div class="score-cards">
         <div class="score-card"><div class="label">GPA</div><div class="value">${portrait.gpa}</div><div class="hint">4.0 制</div></div>
-        <div class="score-card"><div class="label">学业能力</div><div class="value">${rt.academic}</div><div class="hint">得分率(%) · 原始 ${portrait.academic_score}/25</div></div>
-        <div class="score-card"><div class="label">科研能力</div><div class="value">${rt.research}</div><div class="hint">得分率(%) · 原始 ${portrait.research_score}/100</div></div>
-        <div class="score-card"><div class="label">实践能力</div><div class="value">${rt.practice}</div><div class="hint">得分率(%) · 原始 ${portrait.practice_score}/100</div></div>
+        <div class="score-card"><div class="label">学业能力</div><div class="value">${rt.academic}</div><div class="hint">得分率(%) · 原始 ${portrait.academic_score}/${full.academicScore}</div></div>
+        <div class="score-card"><div class="label">科研能力</div><div class="value">${rt.research}</div><div class="hint">得分率(%) · 原始 ${portrait.research_score}/${full.researchScore}</div></div>
+        <div class="score-card"><div class="label">实践能力</div><div class="value">${rt.practice}</div><div class="hint">得分率(%) · 原始 ${portrait.practice_score}/${full.practiceScore}</div></div>
         <div class="score-card"><div class="label">综合总分</div><div class="value">${portrait.total_score}</div><div class="hint">归一加权 · 满分 100</div></div>
       </div>
       <div id="myRadar" style="width:100%;height:340px"></div>
@@ -1961,7 +2366,7 @@ async function loadSettings() {
   loadSystemConfig();
 }
 
-// 成绩修改权限开关（全局）
+// 教师修改权限开关（全局，覆盖成绩/科研/实践三类明细）
 async function loadSystemConfig() {
   const res = await api('/api/config/system');
   const box = document.getElementById('teacherEditState');
@@ -1971,7 +2376,10 @@ async function loadSystemConfig() {
   }
   const on = !!res.data.allow_teacher_edit_score;
   document.getElementById('cfgAllowTeacherEdit').checked = on;
-  box.textContent = on ? '已开放：教师可修改自己负责专业学生的成绩' : '已关闭：只有管理员能修改成绩';
+  // R41：文案说清楚这个开关控制的是三类明细的修改与删除
+  box.textContent = on
+    ? '已开放：教师可修改、删除自己负责专业学生的成绩、科研、实践记录'
+    : '已关闭：教师只能新增记录，修改与删除仅管理员可操作';
 }
 
 async function saveSystemConfig() {
@@ -2040,10 +2448,19 @@ async function recalcAll() {
   toast('正在重算，请稍候...');
   const res = await api('/api/config/portrait/recalculate-all', 'POST');
   if (res.code === 200) {
-    toast(res.message);
-    loadDashboard && (dashFiltersLoaded = false);
+    // R44：返回 done / failed / config_version，失败要能看到是谁
+    const d = res.data || {};
+    let msg = `重算完成：成功 ${d.done || 0} 人，失败 ${d.failed || 0} 人（配置版本 ${d.config_version || '-'}）`;
+    if (d.failed_students && d.failed_students.length) {
+      msg += `；失败学号：${d.failed_students.slice(0, 20).join('、')}`;
+    }
+    toast(msg, d.failed ? 'error' : 'success');
+    dashFiltersLoaded = false;
+    if (typeof loadDashboard === 'function' && document.getElementById('page-dashboard').classList.contains('active')) {
+      loadDashboard();
+    }
   } else {
-    toast(res.message, 'error');
+    toast(res.message || '重算失败', 'error');
   }
 }
 
@@ -2051,21 +2468,34 @@ async function recalcAll() {
 // 需要带鉴权头，所以用 fetch 拿 blob 再触发下载，不能直接用 location.href
 async function exportCsv(url, name) {
   try {
-    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + getToken() } });
+    // R11：导出必须沿用当前页面筛选条件，否则导出结果和页面看到的不一致
+    const q = currentStudentQuery();
+    const params = new URLSearchParams();
+    if (q.search) params.set('search', q.search.trim());
+    if (q.college) params.set('college', q.college);
+    if (q.major) params.set('major', q.major);
+    if (q.grade) params.set('grade', q.grade);
+    const full = url + (params.toString() ? '?' + params.toString() : '');
+
+    const res = await fetch(full, { headers: { Authorization: 'Bearer ' + getToken() } });
     if (res.status === 401) return logout();
-    if (!res.ok) return toast('导出失败', 'error');
+    if (!res.ok) {
+      let msg = `导出失败（HTTP ${res.status}）`;
+      try { const b = await res.json(); if (b && b.message) msg = b.message; } catch (e) {}
+      return toast(msg, 'error');
+    }
 
     const blob = await res.blob();
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = name + '.csv';
+    link.download = `${name}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
     toast(`已导出${name}`);
   } catch (e) {
-    toast('导出失败', 'error');
+    toast('导出失败：' + e.message, 'error');
   }
 }
 </script>

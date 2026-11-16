@@ -16,6 +16,9 @@ const rateOf = (score, full) => (full > 0 ? (score / full) * 100 : 0);
 // 统一保留两位小数，并防御 NaN
 const round2 = (n) => (Number.isFinite(n) ? Math.round(n * 100) / 100 : 0);
 
+// 数值截断到 [min, max]，避免配置变小或历史脏数据算出 127% 这类不可能值（R05）
+const clamp = (n, min, max) => Math.min(max, Math.max(min, Number.isFinite(n) ? n : 0));
+
 // 将满分制的 score（0-100）换算为 4.0 制 GPA，按分数段线性插值：
 // 90-100 → 4.0；80-89 → 3.0~3.9；70-79 → 2.0~2.9；60-69 → 1.0~1.9；<60 → 0
 function scoreToGpa(score) {
@@ -62,6 +65,8 @@ async function computePortrait(studentId, conn, config) {
       academicScore = (totalWeightedScore / totalCredit) * academicFactor;
     }
   }
+  // 上限截断：配置里的标准分是这一维的满分，不允许超过
+  academicScore = clamp(academicScore, 0, limits.academicScore);
 
   // 2. 科研项目 → 科研分
   const [researchRows] = await conn.query(
@@ -72,7 +77,7 @@ async function computePortrait(studentId, conn, config) {
   for (const row of researchRows) {
     researchScore += points[row.level] || 0;
   }
-  researchScore = Math.min(researchScore, limits.researchScore);
+  researchScore = clamp(researchScore, 0, limits.researchScore);
 
   // 3. 实践经历 → 实践分（按小时换算）
   const [practiceRows] = await conn.query(
@@ -83,19 +88,19 @@ async function computePortrait(studentId, conn, config) {
   for (const row of practiceRows) {
     practiceScore += (Number(row.hours) || 0) / hoursPerPoint;
   }
-  practiceScore = Math.min(practiceScore, limits.practiceScore);
+  practiceScore = clamp(practiceScore, 0, limits.practiceScore);
 
   // 4. 综合总分：先各维归一到得分率（0-100），再按权重加权，上限 100
   const academicRate = rateOf(academicScore, limits.academicScore);
   const researchRate = rateOf(researchScore, limits.researchScore);
   const practiceRate = rateOf(practiceScore, limits.practiceScore);
-  const totalScore = Math.min(
-    100,
-    academicRate * weights.academic + researchRate * weights.research + practiceRate * weights.practice
+  const totalScore = clamp(
+    academicRate * weights.academic + researchRate * weights.research + practiceRate * weights.practice,
+    0, 100
   );
 
   return {
-    gpa: round2(gpa),
+    gpa: clamp(round2(gpa), 0, 4),
     academic_score: round2(academicScore),
     research_score: round2(researchScore),
     practice_score: round2(practiceScore),
@@ -113,7 +118,31 @@ function toRates(profile, limits) {
   };
 }
 
-// 根据画像得分生成职业推荐
+// R52：画像保存了计算当时的配置快照，读取时按快照里的标准分换算得分率，
+// 避免"旧分数套新分母"；快照缺失或损坏时退回当前配置。
+function limitsFromSnapshot(snapshot, fallback) {
+  if (!snapshot) return fallback;
+  try {
+    const parsed = typeof snapshot === 'string' ? JSON.parse(snapshot) : snapshot;
+    const l = parsed && parsed.limits;
+    if (!l) return fallback;
+    const academic = Number(l.academicScore);
+    const research = Number(l.researchScore);
+    const practice = Number(l.practiceScore);
+    if ([academic, research, practice].every((n) => Number.isFinite(n) && n > 0)) {
+      return { academicScore: academic, researchScore: research, practiceScore: practice };
+    }
+  } catch (e) {
+    // 快照格式异常时不做任何处理，退回当前配置
+  }
+  return fallback;
+}
+
+// 根据画像得分生成职业推荐（R23：全部用得分率判断，不再用原始分阈值）
+// 阈值：某一维得分率 >= 60% 视为"强"；学术方向还要求科研得分率 >= 40%
+const STRONG_RATE = 60;
+const RESEARCH_SUPPORT_RATE = 40;
+
 function computeCareerRecommendation(portrait, limits) {
   const l = limits || LIMITS;
   const academic = Number(portrait.academic_score) || 0;
@@ -121,28 +150,27 @@ function computeCareerRecommendation(portrait, limits) {
   const practice = Number(portrait.practice_score) || 0;
   const totalScore = Number(portrait.total_score) || 0;
 
-  // 换算成得分率，用同一把尺子比较三个维度是否真的均衡
   const academicRate = round2(rateOf(academic, l.academicScore));
   const researchRate = round2(rateOf(research, l.researchScore));
   const practiceRate = round2(rateOf(practice, l.practiceScore));
 
   const recommendations = [];
 
-  // 学术方向：学业强 + 科研强
-  if (academic >= 20 && research >= 8) {
+  // 学术研究方向：学业强且有科研支撑
+  if (academicRate >= STRONG_RATE && researchRate >= RESEARCH_SUPPORT_RATE) {
     recommendations.push({
       direction: '学术研究方向',
-      reason: `学业成绩优秀(${academic}分)，科研经历丰富(${research}分)，适合考研深造、攻读硕士博士，从事科研院所或高校研究工作。`,
-      score: Math.round(academic * 0.5 + research * 0.5),
+      reason: `学业得分率 ${academicRate}%，科研得分率 ${researchRate}%，具备继续深造的基础，适合考研或进入科研院所、高校从事研究工作。`,
+      score: Math.round(academicRate * 0.5 + researchRate * 0.5),
     });
   }
 
-  // 工程实践方向：实践分高
-  if (practice >= 20) {
+  // 工程实践方向：实践经历达到"强"
+  if (practiceRate >= STRONG_RATE) {
     recommendations.push({
       direction: '工程实践方向',
-      reason: `实践经历丰富(${practice}分)，动手能力强，适合直接就业，从事软件开发、系统运维、技术支持等工程类岗位。`,
-      score: practice,
+      reason: `实践得分率 ${practiceRate}%，动手与项目落地能力较强，适合直接就业，从事软件开发、系统运维、技术支持等工程岗位。`,
+      score: Math.round(practiceRate),
     });
   }
 
@@ -150,18 +178,23 @@ function computeCareerRecommendation(portrait, limits) {
     const topRate = Math.max(academicRate, researchRate, practiceRate);
     const otherRates = Math.max(researchRate, practiceRate);
 
-    if (academicRate >= 60 && academicRate - otherRates >= 20) {
+    if (academicRate >= STRONG_RATE && academicRate - otherRates >= 20) {
       // 学业一枝独秀、科研实践明显偏低：不能称为均衡
       recommendations.push({
         direction: '学业基础方向',
-        reason: `学业得分率 ${academicRate}%，但科研 ${researchRate}%、实践 ${practiceRate}%，后两项明显偏低，目前缺少科研项目与实践经历的支撑。建议先参加学科竞赛、加入课题组或寻找实习，补齐科研或实践后再确定考研或就业方向。`,
+        reason: `学业得分率 ${academicRate}%，但科研 ${researchRate}%、实践 ${practiceRate}%，后两项明显偏低，目前缺少科研项目与实践经历支撑。建议先参加学科竞赛、加入课题组或寻找实习，补齐科研或实践后再确定考研或就业方向。`,
+        score: Math.round(totalScore),
+      });
+    } else if (topRate < 40) {
+      recommendations.push({
+        direction: '基础积累方向',
+        reason: `三维得分率最高仅 ${topRate}%（学业 ${academicRate}%、科研 ${researchRate}%、实践 ${practiceRate}%），尚未形成明显优势。建议先稳住课程成绩，同时开始积累科研或实践经历，再考虑方向选择。`,
         score: Math.round(totalScore),
       });
     } else {
-      // 没有突出维度
       recommendations.push({
         direction: '基础积累方向',
-        reason: `三维得分率最高为 ${topRate}%（学业 ${academicRate}%、科研 ${researchRate}%、实践 ${practiceRate}%），尚未形成明显优势维度。建议先稳住课程成绩，同时开始积累科研或实践经历，再考虑方向选择。`,
+        reason: `三维得分率为学业 ${academicRate}%、科研 ${researchRate}%、实践 ${practiceRate}%，暂无单维达到 ${STRONG_RATE}%。建议在保持学业的同时，集中精力补强最有基础的一维，形成可展示的优势。`,
         score: Math.round(totalScore),
       });
     }
@@ -173,6 +206,8 @@ function computeCareerRecommendation(portrait, limits) {
 }
 
 module.exports = {
-  computePortrait, computeCareerRecommendation, toRates,
+  computePortrait, computeCareerRecommendation, toRates, scoreToGpa,
+  limitsFromSnapshot,
   LIMITS, RESEARCH_POINTS, WEIGHTS,
+  STRONG_RATE, RESEARCH_SUPPORT_RATE,
 };

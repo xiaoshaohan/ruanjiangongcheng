@@ -1,6 +1,6 @@
 {
   "name": "student-portrait-backend",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "高校学生成长与职业发展数据中台 - 后端",
   "main": "app.js",
   "scripts": {

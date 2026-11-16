@@ -3,7 +3,8 @@ const express = require('express');
 const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
 const { authRequired, adminOnly } = require('../utils/auth');
-const { hashPassword } = require('./auth');
+const { hashPassword, passwordProblem } = require('./auth');
+const { writeAudit } = require('../utils/audit');
 
 const router = express.Router();
 
@@ -24,11 +25,15 @@ router.get('/', authRequired, adminOnly, asyncHandler(async (req, res) => {
 
 // 新建用户（可由管理员直接指定角色）
 router.post('/', authRequired, adminOnly, asyncHandler(async (req, res) => {
-  const { username, password, role, student_id, teacher_no } = req.body;
+  const { password, role, student_id, teacher_no } = req.body;
+  // R51：用户名统一小写存储，避免 ADMIN / admin 被当成两个账号
+  const username = String(req.body.username || '').trim().toLowerCase();
 
   if (!username || !password) return fail(res, 400, 400, '用户名和密码不能为空');
   if (username.length < 3) return fail(res, 400, 400, '用户名至少3个字符');
-  if (password.length < 6) return fail(res, 400, 400, '密码至少6位');
+  // R33：统一密码策略，管理员建号也不能使用 6 位弱口令
+  const pwdError = passwordProblem(password);
+  if (pwdError) return fail(res, 400, 400, pwdError);
   if (!ROLES.includes(role)) return fail(res, 400, 400, '角色只能是 admin / teacher / student');
 
   const [exists] = await pool.query('SELECT id FROM sys_user WHERE username = ?', [username]);
@@ -58,6 +63,12 @@ router.post('/', authRequired, adminOnly, asyncHandler(async (req, res) => {
     'INSERT INTO sys_user (username, password_hash, role, student_id, teacher_no) VALUES (?, ?, ?, ?, ?)',
     [username, hashPassword(password), role, boundStudentId, boundTeacherNo]
   );
+  await writeAudit(req, {
+    action: 'user.create',
+    targetType: 'user',
+    targetId: result.insertId,
+    after: { username, role, student_id: boundStudentId, teacher_no: boundTeacherNo },
+  });
   ok(res, { id: result.insertId, username, role, student_id: boundStudentId, teacher_no: boundTeacherNo }, '用户创建成功');
 }));
 
@@ -110,10 +121,20 @@ router.put('/:id', authRequired, adminOnly, asyncHandler(async (req, res) => {
     boundTeacherNo = teacherNo;
   }
 
+  // 角色、状态或绑定关系变更后递增 token_version，让该账号手上的旧 token 立即失效
   await pool.query(
-    'UPDATE sys_user SET role = ?, status = ?, student_id = ?, teacher_no = ? WHERE id = ?',
+    `UPDATE sys_user
+     SET role = ?, status = ?, student_id = ?, teacher_no = ?, token_version = token_version + 1
+     WHERE id = ?`,
     [role, status, boundStudentId, boundTeacherNo, id]
   );
+  await writeAudit(req, {
+    action: 'user.update',
+    targetType: 'user',
+    targetId: id,
+    before: { role: current.role, status: Number(current.status), student_id: current.student_id, teacher_no: current.teacher_no },
+    after: { role, status, student_id: boundStudentId, teacher_no: boundTeacherNo },
+  });
   ok(res, { id, role, status, student_id: boundStudentId, teacher_no: boundTeacherNo }, '用户信息已更新');
 }));
 
@@ -137,14 +158,19 @@ router.post('/bulk-import', authRequired, adminOnly, asyncHandler(async (req, re
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i] || {};
-    const username = String(row.username || '').trim();
+    const username = String(row.username || '').trim().toLowerCase();
     const password = String(row.password || '').trim();
     const key = String(isStudent ? row.student_id : row.teacher_no).trim();
     const rowLabel = `第${i + 1}行`;
 
     if (!username || !password) { results.failed.push({ row: rowLabel, reason: '用户名或密码为空' }); continue; }
-    if (username.length < 3 || password.length < 6) {
-      results.failed.push({ row: rowLabel, reason: '用户名至少3位、密码至少6位' }); continue;
+    if (username.length < 3) {
+      results.failed.push({ row: rowLabel, reason: '用户名至少3位' }); continue;
+    }
+    // R33：批量导入的密码同样走统一策略
+    const pwdError = passwordProblem(password);
+    if (pwdError) {
+      results.failed.push({ row: rowLabel, reason: pwdError }); continue;
     }
     if (!key || key === 'undefined' || key === 'null') {
       results.failed.push({ row: rowLabel, reason: isStudent ? '学号为空' : '工号为空' }); continue;
@@ -170,10 +196,22 @@ router.post('/bulk-import', authRequired, adminOnly, asyncHandler(async (req, re
       );
       results.created++;
     } catch (err) {
-      results.failed.push({ row: rowLabel, reason: err.message });
+      // 不把数据库原始报错抛给前端
+      if (err && err.code === 'ER_DUP_ENTRY') {
+        results.failed.push({ row: rowLabel, reason: '用户名或绑定关系重复' });
+      } else {
+        console.error('[批量建号失败]', rowLabel, err.message);
+        results.failed.push({ row: rowLabel, reason: '账号创建失败，请检查该行数据' });
+      }
     }
   }
 
+  await writeAudit(req, {
+    action: 'user.bulk_import',
+    targetType: 'sys_user',
+    targetId: role,
+    after: { total: results.total, created: results.created, failed: results.failed.length },
+  });
   ok(res, results, `导入完成：成功 ${results.created} 条，失败 ${results.failed.length} 条`);
 }));
 
@@ -183,13 +221,19 @@ router.post('/:id/reset-password', authRequired, adminOnly, asyncHandler(async (
   if (!Number.isInteger(id)) return fail(res, 400, 400, '用户编号不合法');
 
   const { newPassword } = req.body;
-  if (!newPassword || newPassword.length < 6) return fail(res, 400, 400, '新密码至少6位');
+  const pwdError = passwordProblem(newPassword);
+  if (pwdError) return fail(res, 400, 400, pwdError);
 
   const [rows] = await pool.query('SELECT id FROM sys_user WHERE id = ?', [id]);
   if (rows.length === 0) return fail(res, 404, 404, '用户不存在');
 
-  await pool.query('UPDATE sys_user SET password_hash = ? WHERE id = ?', [hashPassword(newPassword), id]);
-  ok(res, { id }, '密码已重置');
+  // 重置密码后撤销该账号已有的登录态
+  await pool.query(
+    'UPDATE sys_user SET password_hash = ?, token_version = token_version + 1 WHERE id = ?',
+    [hashPassword(newPassword), id]
+  );
+  await writeAudit(req, { action: 'user.reset_password', targetType: 'user', targetId: id });
+  ok(res, { id }, '密码已重置，该账号需重新登录');
 }));
 
 // 删除用户
@@ -209,6 +253,12 @@ router.delete('/:id', authRequired, adminOnly, asyncHandler(async (req, res) => 
   }
 
   await pool.query('DELETE FROM sys_user WHERE id = ?', [id]);
+  await writeAudit(req, {
+    action: 'user.delete',
+    targetType: 'user',
+    targetId: id,
+    before: { role: rows[0].role, status: Number(rows[0].status) },
+  });
   ok(res, null, '用户已删除');
 }));
 

@@ -100,6 +100,11 @@
     .link { margin-top: 20px; font-size: 13px; color: #8b9aae; text-align: center; }
     .link a { color: #1a73e8; text-decoration: none; }
     .link a:hover { text-decoration: underline; }
+    .notice {
+      background: #f4f8ff; border: 1px solid #d6e4fb; color: #3a5a86;
+      padding: 10px 13px; border-radius: 8px; font-size: 12.5px;
+      line-height: 1.7; margin-bottom: 18px;
+    }
   </style>
 </head>
 <body>
@@ -118,30 +123,34 @@
   <div class="error" id="error"></div>
   <div class="success" id="success"></div>
 
+  <!-- R02：只开放学生自助注册，且必须"学号 + 姓名"与名单一致；教师账号由管理员开通 -->
+  <div class="notice">
+    仅支持学生自助注册。需填写<b>学号</b>和<b>姓名</b>，并与管理员导入的学生名单完全一致，否则无法注册。<br>
+    教师账号请由管理员在用户管理中开通，注册教师身份会被拒绝。
+  </div>
+
   <form id="regForm">
     <div class="field">
-      <label>身份</label>
-      <div class="identity">
-        <button type="button" class="id-btn active" data-role="student" onclick="pickRole('student')">学生</button>
-        <button type="button" class="id-btn" data-role="teacher" onclick="pickRole('teacher')">教师</button>
-      </div>
+      <label>学号</label>
+      <input type="text" id="identityNo" placeholder="请输入学号，如 2022001" autocomplete="off">
+      <div class="tip">学号必须已在学生名单中，否则无法注册</div>
+    </div>
+    <div class="field">
+      <label>姓名</label>
+      <input type="text" id="realName" placeholder="请输入与学生名单一致的姓名" autocomplete="off">
+      <div class="tip">姓名必须与学号对应的学生记录一致，用于身份核验</div>
     </div>
     <div class="field">
       <label>用户名</label>
-      <input type="text" id="username" placeholder="3-50 个字符" autocomplete="username">
+      <input type="text" id="username" placeholder="3-50 个字符，字母或数字" autocomplete="username">
     </div>
     <div class="field">
       <label>密码</label>
-      <input type="password" id="password" placeholder="至少 6 位" autocomplete="new-password">
+      <input type="password" id="password" placeholder="至少 8 位，不能是纯重复数字" autocomplete="new-password">
     </div>
     <div class="field">
       <label>确认密码</label>
       <input type="password" id="confirm" placeholder="再次输入密码" autocomplete="new-password">
-    </div>
-    <div class="field">
-      <label id="idLabel">学号</label>
-      <input type="text" id="identityNo" placeholder="请输入学号，如 2022001">
-      <div class="tip" id="idTip">学号必须已在学生名单中，否则无法注册</div>
     </div>
     <button type="submit" class="btn" id="submitBtn">注 册</button>
   </form>
@@ -154,25 +163,6 @@ const form = document.getElementById('regForm');
 const errorBox = document.getElementById('error');
 const successBox = document.getElementById('success');
 const submitBtn = document.getElementById('submitBtn');
-
-let role = 'student';
-
-// 切换学生 / 教师身份：学生认证学号，教师认证工号
-function pickRole(r) {
-  role = r;
-  document.querySelectorAll('.id-btn').forEach((b) => {
-    b.classList.toggle('active', b.dataset.role === r);
-  });
-  const isTeacher = r === 'teacher';
-  document.getElementById('idLabel').textContent = isTeacher ? '工号' : '学号';
-  document.getElementById('identityNo').value = '';
-  document.getElementById('identityNo').placeholder = isTeacher
-    ? '请输入工号，如 T001'
-    : '请输入学号，如 2022001';
-  document.getElementById('idTip').textContent = isTeacher
-    ? '工号必须已在教师档案中，否则无法注册'
-    : '学号必须已在学生名单中，否则无法注册';
-}
 
 function showError(msg) {
   errorBox.textContent = msg;
@@ -188,20 +178,27 @@ form.onsubmit = async (e) => {
   const username = document.getElementById('username').value.trim();
   const password = document.getElementById('password').value;
   const confirm = document.getElementById('confirm').value;
-  const identityNo = document.getElementById('identityNo').value.trim();
+  const studentId = document.getElementById('identityNo').value.trim();
+  const name = document.getElementById('realName').value.trim();
 
   if (!username || !password || !confirm) {
     return showError('请填写所有字段');
   }
+  if (username.length < 3) {
+    return showError('用户名至少 3 个字符');
+  }
   if (password !== confirm) {
     return showError('两次输入的密码不一致');
   }
-  if (password.length < 6) {
-    return showError('密码至少 6 位');
+  // R37：密码策略与后端一致，至少 8 位
+  if (password.length < 8) {
+    return showError('密码至少 8 位');
   }
-  if (!identityNo) {
-    return showError(role === 'teacher' ? '请填写工号' : '请填写学号');
+  if (/^(\d)\1+$/.test(password)) {
+    return showError('密码不能是重复的数字');
   }
+  if (!studentId) return showError('请填写学号');
+  if (!name) return showError('请填写姓名，用于与学号核验');
 
   submitBtn.disabled = true;
   submitBtn.textContent = '注册中...';
@@ -211,20 +208,28 @@ form.onsubmit = async (e) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username,
+        username: username.toLowerCase(),
         password,
-        identity: role,
-        student_id: role === 'student' ? identityNo : null,
-        teacher_no: role === 'teacher' ? identityNo : null,
+        identity: 'student',
+        student_id: studentId,
+        name,
       }),
     });
-    const data = await res.json();
+
+    let data;
+    try {
+      data = await res.json();
+    } catch (err) {
+      showError('服务器返回格式异常（HTTP ' + res.status + '）');
+      return;
+    }
 
     if (data.code === 200) {
       successBox.textContent = '注册成功，2 秒后跳转到登录页';
       successBox.style.display = 'block';
       setTimeout(() => { location.href = '/login.html'; }, 2000);
     } else {
+      // R08：直接展示后端给出的可读原因（学号不存在 / 姓名不匹配 / 用户名已占用）
       showError(data.message || '注册失败');
     }
   } catch (err) {

@@ -1,14 +1,12 @@
 const express = require('express');
 const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
-const { computePortrait, computeCareerRecommendation, toRates } = require('../utils/portrait');
-const { getPortraitConfig } = require('../utils/portraitConfig');
-const { saveRecommendations } = require('../utils/recommendationStore');
+const { computePortrait, computeCareerRecommendation, toRates, limitsFromSnapshot } = require('../utils/portrait');
+const { getPortraitConfig, configVersion } = require('../utils/portraitConfig');
+const { upsertProfile } = require('../utils/profileStore');
+const { saveRecommendations, KEEP_BATCHES } = require('../utils/recommendationStore');
 
 const router = express.Router();
-
-// 每个学生最多保留最近 5 批推荐记录
-const KEEP_BATCHES = 5;
 
 // 计算学生画像（同时生成并保存职业推荐）
 router.post('/calculate/:studentId', asyncHandler(async (req, res) => {
@@ -30,29 +28,21 @@ router.post('/calculate/:studentId', asyncHandler(async (req, res) => {
 
     const config = await getPortraitConfig();
     const portrait = await computePortrait(studentId, conn, config);
-
-    await conn.query(
-      `INSERT INTO ability_profile
-         (student_id, gpa, academic_score, research_score, practice_score, total_score)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         gpa = VALUES(gpa),
-         academic_score = VALUES(academic_score),
-         research_score = VALUES(research_score),
-         practice_score = VALUES(practice_score),
-         total_score = VALUES(total_score)`,
-      [
-        studentId, portrait.gpa, portrait.academic_score,
-        portrait.research_score, portrait.practice_score, portrait.total_score,
-      ]
-    );
+    const { version } = await upsertProfile(conn, studentId, portrait, config);
 
     // 推荐结果落库，保留历史
-    const recommendations = computeCareerRecommendation(portrait);
+    const recommendations = computeCareerRecommendation(portrait, config.limits);
     const batchAt = await saveRecommendations(conn, studentId, portrait, recommendations);
 
     await conn.commit();
-    ok(res, { student_id: studentId, ...portrait, recommendations, batch_at: batchAt }, '画像计算完成');
+    ok(res, {
+      student_id: studentId,
+      ...portrait,
+      rates: toRates(portrait, config.limits),
+      config_version: version,
+      recommendations,
+      batch_at: batchAt,
+    }, '画像计算完成');
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -73,7 +63,18 @@ router.get('/:studentId', asyncHandler(async (req, res) => {
   if (rows.length === 0) return fail(res, 404, 404, '画像不存在，请先计算');
   // 附带三个维度的得分率（0-100），前端雷达图、对比表统一用它，避免各维量纲不一致
   const config = await getPortraitConfig();
-  ok(res, { ...rows[0], rates: toRates(rows[0], config.limits) });
+  const version = configVersion(config);
+  // R52：按画像保存时的标准分换算，分母与分数来自同一份配置
+  const savedLimits = limitsFromSnapshot(rows[0].config_snapshot, config.limits);
+  ok(res, {
+    ...rows[0],
+    rates: toRates(rows[0], savedLimits),
+    limits: savedLimits,
+    current_limits: config.limits,
+    config_version: version,
+    // 画像按旧配置算出来的，需提示重算（R14/R52）；没有版本号的历史画像同样视为待重算
+    stale: !rows[0].config_version || rows[0].config_version !== version,
+  });
 }));
 
 // 职业推荐：优先返回最近一次保存的记录，没有历史时按当前画像实时计算
@@ -102,10 +103,11 @@ router.get('/career/:studentId', asyncHandler(async (req, res) => {
   );
   if (rows.length === 0) return fail(res, 404, 404, '画像不存在，请先计算');
 
+  const config = await getPortraitConfig();
   ok(res, {
     batch_at: null,
     total_score: rows[0].total_score,
-    items: computeCareerRecommendation(rows[0]),
+    items: computeCareerRecommendation(rows[0], config.limits),
   }, '实时计算，尚未生成历史记录');
 }));
 

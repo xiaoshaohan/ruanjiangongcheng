@@ -4,23 +4,29 @@
 
 围绕学生的学业成绩、科研项目、实践活动，计算能力画像并给出职业方向推荐。后端 Node.js + Express + MySQL，前端原生 HTML/CSS/JavaScript（ECharts 图表）。
 
-## 功能清单（v1.8）
+## 功能清单（v1.9）
 
 - 三角色登录与权限隔离：管理员 / 教师 / 学生，后端中间件 + 前端菜单双重控制
-- **账号认证**：注册分学生 / 教师两种身份，学生凭学号、教师凭工号；学号或工号不在基础表中注册直接失败，一个学号/工号只能绑定一个账号
-- **师生关系**：教师档案记录工号、姓名、学院、职称与负责专业，学生专业命中即视为该教师的学生
-- **权限分级**：管理员可改所有人与所有数据；学生只能改自己的姓名、性别；教师只能改自己和负责专业的学生
-- **成绩权限**：录入成绩限教师与管理员；学生只读；修改/删除成绩默认只有管理员，管理员在系统设置里打开开关后教师才可改（同样限负责专业）
-- 学生管理：列表、筛选（学院 / 专业 / 年级 / 关键字）、新增、编辑、删除（级联清理关联数据）
-- 数据录入：学业成绩、科研项目、实践经历，支持单条增改删与 CSV 批量导入
-- 能力画像：GPA、学业 / 科研 / 实践三维得分，统一换算为得分率（0–100）后加权
-- 职业推荐：按画像给出方向与推荐度，**每次计算按批次落库**，保留最近 5 批可回溯
-- 数据看板：总量、均值、五档分布、TOP5，支持按学院 / 专业 / 年级 / 学期筛选
+- **账号认证**：自助注册仅开放学生（工号认证由管理员开通账号），学生必须"学号 + 姓名"与名单完全一致，学号不存在或姓名不匹配直接拒绝；用户名统一小写，一个学号/工号只能绑定一个账号
+- **登录防护**：连续失败 5 次锁定 15 分钟；密码至少 8 位、拒绝弱口令与纯重复数字
+- **Token 撤销**：改密码、改角色/状态、重置密码、删除学生解绑账号都会让旧 token 立即失效（`token_version`）
+- **师生关系**：教师档案记录工号、姓名、学院、职称、状态与负责专业，学生专业命中即视为该教师的学生；教师负责专业可显式清空
+- **权限分级**：管理员可改所有人与所有数据；学生只能改自己的姓名、性别；教师只能改自己负责专业学生的姓名、性别、电话、邮箱（学院/专业/年级由管理员维护）
+- **成绩权限**：录入成绩限教师与管理员；学生只读；修改/删除成绩、科研、实践默认只有管理员，管理员在系统设置里打开开关后教师才可改（同样限负责专业）
+- 学生管理：服务端分页（默认 50 条/页）+ 搜索 / 学院 / 专业 / 年级筛选、新增（仅管理员）、部分字段更新、删除前展示影响范围并要求输入学号确认
+- 数据录入：学业成绩、科研项目、实践经历，支持单条增改删；成绩按"学生+课程+学期"查重，重复需显式覆盖
+- CSV 导入：显式选择导入类型（学生 / 成绩 / 科研 / 实践），提供模板下载；逐行校验、失败行可下载、单次上限 5000 行；兼容 UTF-8 与 GBK
+- CSV 导出：沿用当前筛选条件；使用当前计分规则并附带配置版本列；教师导出限本专业且电话/邮箱脱敏；单元格做公式注入转义
+- 能力画像：GPA、学业 / 科研 / 实践三维得分，统一换算为得分率（0–100）后加权；返回 `limits`、`config_version`、`stale`
+- 自动重算：成绩 / 科研 / 实践写入或导入后，自动重算涉及学生的画像
+- 职业推荐：按得分率阈值判断方向，理由写明"学业得分率 X%、科研得分率 Y%"，**每次计算按批次落库**，保留最近 5 批可回溯
+- 数据看板：总量、均值、五档分布、TOP5，支持按学院 / 专业 / 年级 / 学期筛选（学期只过滤成绩记录条数，界面有口径提示）
 - 学生对比：两名学生雷达图与逐项差值
 - 学生个人视图：学生账号只看自己的画像与明细，可修改自己的姓名和性别
 - 用户管理：新建账号、改角色、禁用 / 启用、重置密码、删除（保留至少一个启用管理员），**支持批量导入学生 / 教师账号**
-- 系统设置：画像权重、标准分、换算系数、科研分值可配置，支持恢复默认与按当前配置重算全部；另有**“允许教师修改成绩”全局开关**
-- CSV 导出：学生列表、画像报告（UTF-8 BOM，Excel 直接可读）
+- 系统设置：画像权重、标准分、换算系数、科研分值可配置，支持恢复默认与按当前配置重算全部（逐学生事务，返回成功/失败明细）；另有**"教师修改学生明细权限"全局开关**
+- 审计：关键写操作落 `audit_log`，管理员可通过 `GET /api/audit` 查询
+- 安全基线：JWT 密钥强制校验、CORS 白名单、安全响应头 + CSP、请求体 10MB 上限、错误信息可读化（SQL 只进日志）
 
 ## 项目结构
 
@@ -50,15 +56,19 @@ ruanjiangongcheng2/
 │   │   ├── auth.js             # JWT 与角色中间件
 │   │   ├── validate.js         # 声明式参数校验
 │   │   ├── portrait.js         # 画像计算核心逻辑
-│   │   ├── portraitConfig.js   # 计分规则读取（缓存 + 默认值兜底）
+│   │   ├── portraitConfig.js   # 计分规则读取（PATCH 合并 + 30s 缓存 + 版本号）
 │   │   ├── permission.js       # 师生关系与写权限判定
+│   │   ├── fields.js           # 性别归一、日期区间校验、CSV 单元格转义、联系方式脱敏
+│   │   ├── recalc.js           # 写入后按学生重算画像
+│   │   ├── audit.js            # 审计日志写入（失败不阻断主流程）
 │   │   └── recommendationStore.js  # 推荐按批次落库与清理
 │   ├── sql/
 │   │   ├── init.sql            # 建库建表 + 示例数据
 │   │   ├── auth.sql            # 系统用户表
 │   │   ├── optimize.sql        # 索引与视图
 │   │   ├── migrate-v1.7-*.sql  # v1.7 三个迁移脚本
-│   │   └── migrate-v1.8-accounts.sql  # v1.8 账号体系（teacher / teacher_major / sys_config）
+│   │   ├── migrate-v1.8-accounts.sql  # v1.8 账号体系（teacher / teacher_major / sys_config）
+│   │   └── migrate-v1.9-hardening.sql # v1.9 唯一索引、token_version、audit_log、性别归一、画像配置快照
 │   ├── test/
 │   │   ├── portrait.test.js    # 画像算法单元测试
 │   │   └── api.test.js         # 接口测试（内存替身，不连库）
@@ -104,6 +114,14 @@ ruanjiangongcheng2/
    Copy-Item .env.example .env
    ```
 
+   **`JWT_SECRET` 必须设置且不少于 32 个字符**，缺失或过短时服务会直接退出，不再使用内置默认密钥。生成方式：
+
+   ```powershell
+   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+   ```
+
+   其他常用项：`DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME`、`PORT`（默认 3000）、`BODY_LIMIT`（默认 10mb）、`CORS_ORIGINS`（跨域白名单，逗号分隔，默认仅同源）、`ADMIN_INIT_PASSWORD`（首次初始化管理员密码）。
+
 5. 启动：
 
    ```powershell
@@ -129,7 +147,7 @@ ruanjiangongcheng2/
 
 教师能改哪些学生，取决于“教师档案”里登记的负责专业：学生 `major` 命中该教师的专业列表即视为他的学生。先在“用户管理 → 教师档案”里准备教师数据（`工号,姓名,学院,职称,负责专业`，多个专业用顿号分隔）。
 
-## 已有数据库升级到 v1.8
+## 已有数据库升级到 v1.9
 
 旧版脚本初始化的库，按顺序执行迁移脚本（可重复执行，不破坏已有数据）：
 
@@ -138,13 +156,16 @@ source sql/migrate-v1.7-permission.sql;   -- sys_user 加 status / student_id，
 source sql/migrate-v1.7-career.sql;       -- 新增 career_recommendation（推荐历史）
 source sql/migrate-v1.7-config.sql;       -- 新增 portrait_config（计分规则）
 source sql/migrate-v1.8-accounts.sql;     -- 新增 teacher / teacher_major / sys_config，sys_user 加 teacher_no
+source sql/migrate-v1.9-hardening.sql;    -- token_version、三个唯一索引、hours DECIMAL、画像版本列、audit_log、性别归一
 ```
 
-升级后在“系统设置”页点一次“按当前配置重算全部”，让全部画像按新口径重算并写入推荐历史。
+`migrate-v1.9-hardening.sql` 建唯一索引时会先清理重复数据，重复行直接跳过并输出核对查询结果。升级后在“系统设置”页点一次“按当前配置重算全部”，让全部画像按新口径重算并写入推荐历史。
 
 ## 多机共用同一个库
 
 数据库连接参数都在 `backend/.env` 的 `DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME`。要让几台电脑共用同一份数据，把 MySQL 部署在一台彼此可连通的机器上，各机 `.env` 的 `DB_HOST` 统一填那台机器的地址，其余四项与建库时保持一致，再按上面的迁移脚本建表。这样管理员在哪台电脑登录，改的都是同一个库。
+
+跨域访问时（例如前端与后端不在同一主机同一端口），把前端来源写进 `.env` 的 `CORS_ORIGINS`（逗号分隔），未列入的来源浏览器会被拦截。共享库的安全注意事项见 [共享库接入说明](docs/共享库接入说明.md)。
 
 ## 接口一览
 
@@ -152,39 +173,41 @@ source sql/migrate-v1.8-accounts.sql;     -- 新增 teacher / teacher_major / sy
 
 | 方法 | 路径 | 说明 | 权限 |
 | --- | --- | --- | --- |
-| POST | /api/auth/login | 登录，返回 JWT（8 小时） | 公开 |
-| POST | /api/auth/register | 自助注册，按身份认证：学生填学号、教师填工号，不存在即失败 | 公开 |
-| POST | /api/auth/change-password | 修改当前用户密码 | 登录用户 |
-| GET | /api/auth/me | 当前用户信息 | 登录用户 |
-| GET/POST/PUT/DELETE | /api/users[...] | 用户列表、新建、改角色状态、删除 | admin |
-| POST | /api/users/bulk-import | 批量导入学生 / 教师账号（逐行校验，上限 500 条） | admin |
-| POST | /api/users/:id/reset-password | 重置指定用户密码 | admin |
-| GET/POST | /api/teachers | 教师档案列表、新增或更新（含负责专业） | admin |
+| POST | /api/auth/login | 登录，返回 JWT（8 小时）；连续失败 5 次锁定 15 分钟 | 公开 |
+| POST | /api/auth/register | 学生自助注册：用户名 + 密码 + 学号 + 姓名，姓名与学号不匹配即失败；教师身份返回 403 | 公开 |
+| POST | /api/auth/change-password | 修改当前用户密码（≥8 位），成功后旧 token 失效 | 登录用户 |
+| GET | /api/auth/me | 当前用户信息（含 role / status / student_id / teacher_no） | 登录用户 |
+| GET/POST/PUT/DELETE | /api/users[...] | 用户列表、新建、改角色状态、删除（改角色/状态/重置密码会使旧 token 失效） | admin |
+| POST | /api/users/bulk-import | 批量导入学生 / 教师账号（逐行校验，上限 500 条，密码 ≥8 位） | admin |
+| POST | /api/users/:id/reset-password | 重置指定用户密码（≥8 位） | admin |
+| GET/POST | /api/teachers | 教师档案列表、新增或更新（`majors: []` 表示清空负责专业，`status` 可置 0） | admin |
 | POST | /api/teachers/bulk-import | 批量导入教师档案 | admin |
 | DELETE | /api/teachers/:teacherNo | 删除教师（有账号绑定时拒绝） | admin |
 | GET | /api/teachers/my-students | 教师查看自己负责的专业与学生 | teacher |
-| GET | /api/me/profile | 学生自己的画像与推荐 | student |
+| GET | /api/me/profile | 学生自己的画像与推荐（含 limits / stale） | student |
 | PUT | /api/me/profile | 学生修改自己的姓名、性别 | student |
 | GET | /api/me/records | 学生自己的三类明细 | student |
-| GET/POST/PUT/DELETE | /api/students[...] | 学生增删改查（删除仅 admin，编辑按师生关系鉴权） | staff / admin |
-| POST/GET/PUT/DELETE | /api/academic[...] | 学业成绩（录入按师生关系鉴权；改删需管理员开放开关） | staff |
+| GET/POST/PUT/DELETE | /api/students[...] | 学生增删改查；列表支持 `page/pageSize/withMeta/search/college/major/grade`；新增仅 admin；PUT 为部分更新 | staff / admin |
+| GET | /api/students/:id/impact | 删除前查询关联数据条数与绑定账号 | admin |
+| POST/GET/PUT/DELETE | /api/academic[...] | 学业成绩；重复的“学生+课程+学期”需显式 `overwrite=true`；改删需管理员开放开关 | staff |
 | POST/GET/PUT/DELETE | /api/research[...] | 科研项目（同上） | staff |
-| POST/GET/PUT/DELETE | /api/practice[...] | 实践经历（同上） | staff |
+| POST/GET/PUT/DELETE | /api/practice[...] | 实践经历（hours 保留 1 位小数，同上） | staff |
 | POST | /api/portrait/calculate/:id | 计算画像并写入一批推荐 | staff |
-| GET | /api/portrait/:id | 读取画像 | staff |
+| GET | /api/portrait/:id | 读取画像（返回 limits / config_version / stale） | staff |
 | GET | /api/portrait/career/:id | 最近一次推荐 | staff |
 | GET | /api/portrait/career-history/:id | 推荐历史（最多 5 批） | staff |
-| GET | /api/stats | 看板数据，支持 college / major / grade / semester | staff |
+| GET | /api/stats | 看板数据，支持 college / major / grade（整数）/ semester | staff |
 | GET | /api/stats/options | 筛选下拉选项 | staff |
-| GET | /api/config/portrait | 读取计分规则 | staff |
-| PUT | /api/config/portrait | 保存计分规则（校验权重和为 1） | admin |
+| GET | /api/config/portrait | 读取计分规则（含 config_version） | staff |
+| PUT | /api/config/portrait | PATCH 语义保存计分规则（校验权重和为 1，未提交字段保持不变） | admin |
 | POST | /api/config/portrait/reset | 恢复默认 | admin |
-| POST | /api/config/portrait/recalculate-all | 按当前配置重算全部 | admin |
+| POST | /api/config/portrait/recalculate-all | 按当前配置逐学生事务重算全部，返回 done / failed / config_version | admin |
 | GET | /api/config/system | 读取系统开关（allow_teacher_edit_score） | staff |
-| PUT | /api/config/system | 保存系统开关 | admin |
-| GET | /api/export/students | 导出学生 CSV | staff |
-| GET | /api/export/portraits | 导出画像 CSV | staff |
-| POST | /api/import/{students,academic,research,practice} | 批量导入 CSV | admin |
+| PUT | /api/config/system | 保存系统开关（只认 true/false/1/0） | admin |
+| GET | /api/audit | 审计日志，支持 action / actor / limit | admin |
+| GET | /api/export/students | 导出学生 CSV（沿用筛选参数；教师限本专业、联系方式脱敏） | staff |
+| GET | /api/export/portraits | 导出画像 CSV（附带当前 limits 与配置版本） | staff |
+| POST | /api/import/{students,academic,research,practice} | 批量导入 CSV，单次最多 5000 行，失败明细最多 200 条 | admin |
 
 ## 测试
 
@@ -193,7 +216,7 @@ cd backend
 npm test
 ```
 
-画像算法测试与接口测试使用模拟数据库，不需要 MySQL，也不验证真实库的 SQL 与持久化。手工验证结果见 [测试记录](docs/测试记录.md)。
+当前 31 项单元测试全部通过（画像算法 10 项 + 接口与权限 21 项）。测试使用模拟数据库，不需要 MySQL，也不验证真实库的 SQL 与持久化。手工与浏览器验证结果见 [测试记录](docs/测试记录.md)，测试报告 54 项问题的逐条修复对照见 [v1.9 修复对照表](docs/v1.9修复对照表.md)。
 
 ## 版本记录
 
@@ -205,3 +228,4 @@ npm test
 | v1.6 | 明细只增不删的评审修正、量纲归一化（得分率）、UI 调整 |
 | v1.7 | 三角色权限隔离、用户管理、学生个人视图、看板筛选、推荐落库与历史、计分规则配置化；修复重复学号 500、不存在学号 500、存储型 XSS、日期少一天；权重定为学业 80%、科研 10%、实践 10%，绩点按分数段线性插值（90-100→4.0、80-89→3.0~3.9、70-79→2.0~2.9、60-69→1.0~1.9），看板总分分布改 20 分一档，职业推荐兜底改为按得分率区分“学业基础方向/基础积累方向”并指出短板，不再误称发展均衡 |
 | v1.8 | 账号体系升级：注册分学生 / 教师身份并强制学号、工号认证（不存在即注册失败），教师档案与负责专业（teacher / teacher_major），师生关系按专业匹配；权限分级——管理员改所有人，学生只能改自己姓名性别，教师只能改自己与负责专业的学生；成绩录入限教师与管理员、学生只读，改删成绩默认仅管理员，由“允许教师修改成绩”全局开关放开；用户管理与教师档案支持批量导入；`.env` 的 DB_HOST 支持多机指向同一共享库 |
+| v1.9 | 按第三方测试报告的 54 项问题逐条修复：JWT 密钥强制校验与 token 撤销（token_version）、登录失败锁定、学生注册“学号+姓名”核验与教师自助注册关闭、教师编辑字段收窄、学生删除影响范围确认与账号解绑停用、student/teacher/成绩三个唯一索引与重复 409、导入逐行校验与失败行下载（5000 行上限、UTF-8/GBK 兼容）、写入后自动重算、导出按筛选与配置版本、CSV 公式注入转义、画像返回 limits 与 stale、配置 PATCH 语义与 30 秒缓存、推荐阈值改按得分率并写明短板、统计参数校验与学期口径提示、CORS 白名单与安全响应头、审计日志、错误信息可读化、画像配置快照（config_snapshot）与按快照换算得分率；前端学生列表改服务端分页与筛选、导入类型显式选择与模板、画像分母取接口 limits、删除确认弹窗、学生下拉可搜索 |

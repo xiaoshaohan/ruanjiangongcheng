@@ -1,12 +1,13 @@
 const express = require('express');
 const pool = require('../config/db');
-const { ok, asyncHandler } = require('../utils/response');
+const { ok, fail, asyncHandler } = require('../utils/response');
 const { toRates } = require('../utils/portrait');
 const { getPortraitConfig } = require('../utils/portraitConfig');
 
 const router = express.Router();
 
 // 根据查询参数拼学生维度的过滤条件，字段统一加 s. 前缀
+// R40：年级参数必须先校验为整数，否则 Number('abc') 会把 NaN 拼进 SQL 导致 500
 function buildStudentConditions(query) {
   const conds = [];
   const params = [];
@@ -18,9 +19,11 @@ function buildStudentConditions(query) {
     conds.push('s.major = ?');
     params.push(query.major);
   }
-  if (query.grade) {
+  if (query.grade !== undefined && query.grade !== '') {
+    const grade = Number(query.grade);
+    if (!Number.isInteger(grade)) return { error: '年级参数必须是整数' };
     conds.push('s.grade = ?');
-    params.push(Number(query.grade));
+    params.push(grade);
   }
   return { sql: conds.length ? ' AND ' + conds.join(' AND ') : '', params };
 }
@@ -28,7 +31,14 @@ function buildStudentConditions(query) {
 // 数据看板：支持按学院 / 专业 / 年级 / 学期筛选
 router.get('/', asyncHandler(async (req, res) => {
   const { college, major, grade, semester } = req.query;
-  const { sql: sCond, params: sParams } = buildStudentConditions(req.query);
+
+  // 学期参数长度对齐数据库列，超长直接拒绝，避免截断查询
+  if (semester && String(semester).length > 20) {
+    return fail(res, 400, 400, '学期参数不能超过20个字符');
+  }
+
+  const { sql: sCond, params: sParams, error: condError } = buildStudentConditions(req.query);
+  if (condError) return fail(res, 400, 400, condError);
 
   const [[studentCount]] = await pool.query(
     'SELECT COUNT(*) AS total FROM student s WHERE 1=1' + sCond,

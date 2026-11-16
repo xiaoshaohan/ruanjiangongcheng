@@ -1,6 +1,8 @@
 // 画像计分规则的默认值与持久化读写
 // 注意：数据库连接按需加载，避免纯单元测试引入本模块时建立连接池导致进程不退出
 
+const crypto = require('crypto');
+
 const DEFAULT_CONFIG = {
   // 三维权重，合计必须为 1（学业为主，科研与实践各占一成）
   weights: { academic: 0.8, research: 0.1, practice: 0.1 },
@@ -14,43 +16,46 @@ const DEFAULT_CONFIG = {
   practice: { hours_per_point: 10 },
 };
 
+// 缓存带 TTL：多实例部署时旧配置最多存活 30 秒（R27）
+const CACHE_TTL_MS = 30 * 1000;
 let cache = null;
+let cacheAt = 0;
 
-// 深合并：只接受已知字段，缺失部分回退默认值，避免脏数据把画像算崩
-function mergeConfig(raw) {
-  const cfg = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-  if (!raw || typeof raw !== 'object') return cfg;
+// 深合并：以 base 为底，只覆盖 raw 中出现的字段（PATCH 语义，R21）
+function mergeConfig(raw, base = DEFAULT_CONFIG) {
+  const cfg = JSON.parse(JSON.stringify(base || DEFAULT_CONFIG));
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return cfg;
 
   const pickNumber = (obj, key, fallback) => {
     const v = Number(obj && obj[key]);
     return Number.isFinite(v) ? v : fallback;
   };
 
-  if (raw.weights) {
+  if (raw.weights && typeof raw.weights === 'object') {
     cfg.weights = {
       academic: pickNumber(raw.weights, 'academic', cfg.weights.academic),
       research: pickNumber(raw.weights, 'research', cfg.weights.research),
       practice: pickNumber(raw.weights, 'practice', cfg.weights.practice),
     };
   }
-  if (raw.limits) {
+  if (raw.limits && typeof raw.limits === 'object') {
     cfg.limits = {
       academicScore: pickNumber(raw.limits, 'academicScore', cfg.limits.academicScore),
       researchScore: pickNumber(raw.limits, 'researchScore', cfg.limits.researchScore),
       practiceScore: pickNumber(raw.limits, 'practiceScore', cfg.limits.practiceScore),
     };
   }
-  if (raw.academic) {
+  if (raw.academic && typeof raw.academic === 'object') {
     cfg.academic = { factor: pickNumber(raw.academic, 'factor', cfg.academic.factor) };
   }
-  if (raw.research_points) {
+  if (raw.research_points && typeof raw.research_points === 'object') {
     cfg.research_points = {
       国家级: pickNumber(raw.research_points, '国家级', cfg.research_points['国家级']),
       省级: pickNumber(raw.research_points, '省级', cfg.research_points['省级']),
       校级: pickNumber(raw.research_points, '校级', cfg.research_points['校级']),
     };
   }
-  if (raw.practice) {
+  if (raw.practice && typeof raw.practice === 'object') {
     cfg.practice = { hours_per_point: pickNumber(raw.practice, 'hours_per_point', cfg.practice.hours_per_point) };
   }
 
@@ -58,10 +63,10 @@ function mergeConfig(raw) {
 }
 
 // 校验配置合法性，返回 null 表示通过，否则返回错误说明
-function validateConfig(raw) {
-  if (!raw || typeof raw !== 'object') return '配置格式不正确';
+function validateConfig(raw, base = DEFAULT_CONFIG) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '配置格式不正确';
 
-  const cfg = mergeConfig(raw);
+  const cfg = mergeConfig(raw, base);
 
   const { academic, research, practice } = cfg.weights;
   if (academic < 0 || research < 0 || practice < 0) return '权重不能为负数';
@@ -80,9 +85,15 @@ function validateConfig(raw) {
   return null;
 }
 
-// 读取配置：优先内存缓存，其次数据库，表不存在或读取失败时回退默认值
+// 配置版本：用于识别画像是否按最新口径计算（R52）
+function configVersion(config) {
+  const json = JSON.stringify(config || DEFAULT_CONFIG);
+  return crypto.createHash('md5').update(json).digest('hex').slice(0, 8);
+}
+
+// 读取配置：内存缓存（30 秒 TTL），表不存在或读取失败时回退默认值
 async function getPortraitConfig({ force = false } = {}) {
-  if (!force && cache) return cache;
+  if (!force && cache && Date.now() - cacheAt < CACHE_TTL_MS) return cache;
 
   try {
     const pool = require('../config/db');
@@ -95,6 +106,7 @@ async function getPortraitConfig({ force = false } = {}) {
         ? JSON.parse(rows[0].config_value)
         : rows[0].config_value;
       cache = mergeConfig(value);
+      cacheAt = Date.now();
       return cache;
     }
   } catch (e) {
@@ -102,11 +114,21 @@ async function getPortraitConfig({ force = false } = {}) {
   }
 
   cache = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  cacheAt = Date.now();
   return cache;
 }
 
 function clearConfigCache() {
   cache = null;
+  cacheAt = 0;
 }
 
-module.exports = { DEFAULT_CONFIG, getPortraitConfig, clearConfigCache, validateConfig, mergeConfig };
+module.exports = {
+  DEFAULT_CONFIG,
+  getPortraitConfig,
+  clearConfigCache,
+  validateConfig,
+  mergeConfig,
+  configVersion,
+  CACHE_TTL_MS,
+};

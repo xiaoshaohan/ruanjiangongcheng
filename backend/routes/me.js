@@ -3,8 +3,9 @@ const express = require('express');
 const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
 const { authRequired } = require('../utils/auth');
-const { computeCareerRecommendation, toRates } = require('../utils/portrait');
-const { getPortraitConfig } = require('../utils/portraitConfig');
+const { computeCareerRecommendation, toRates, limitsFromSnapshot } = require('../utils/portrait');
+const { getPortraitConfig, configVersion } = require('../utils/portraitConfig');
+const { normalizeGender, genderLabel } = require('../utils/fields');
 
 const router = express.Router();
 
@@ -25,14 +26,32 @@ router.get('/profile', authRequired, asyncHandler(async (req, res) => {
   );
   if (students.length === 0) return fail(res, 404, 404, '学生信息不存在，请联系管理员');
 
+  const config = await getPortraitConfig();
+  const version = configVersion(config);
+
   const [profiles] = await pool.query(
-    'SELECT gpa, academic_score, research_score, practice_score, total_score, update_time FROM ability_profile WHERE student_id = ?',
+    `SELECT gpa, academic_score, research_score, practice_score, total_score,
+            config_version, config_snapshot, calculated_at, update_time
+     FROM ability_profile WHERE student_id = ?`,
     [studentId]
   );
 
-  const student = students[0];
+  const student = {
+    ...students[0],
+    // R13：统一用 M/F 存储，展示层显式映射，未知值不再默认成"女"
+    gender_label: genderLabel(students[0].gender),
+  };
+
   if (profiles.length === 0) {
-    return ok(res, { student, portrait: null, rates: null, career: [], career_batch_at: null }, '尚未生成画像');
+    return ok(res, {
+      student,
+      portrait: null,
+      rates: null,
+      limits: config.limits,
+      config_version: version,
+      career: [],
+      career_batch_at: null,
+    }, '尚未生成画像');
   }
 
   const portrait = profiles[0];
@@ -54,13 +73,18 @@ router.get('/profile', authRequired, asyncHandler(async (req, res) => {
     );
     career = items;
   } else {
-    career = computeCareerRecommendation(portrait);
+    career = computeCareerRecommendation(portrait, config.limits);
   }
 
   ok(res, {
     student,
     portrait,
-    rates: toRates(portrait, (await getPortraitConfig()).limits),
+    // R52：按画像保存时的标准分换算，避免旧分数套新分母
+    rates: toRates(portrait, limitsFromSnapshot(portrait.config_snapshot, config.limits)),
+    limits: limitsFromSnapshot(portrait.config_snapshot, config.limits),
+    current_limits: config.limits,
+    config_version: version,
+    stale: !portrait.config_version || portrait.config_version !== version,
     career,
     career_batch_at: careerBatchAt,
   });
@@ -72,17 +96,27 @@ router.put('/profile', authRequired, asyncHandler(async (req, res) => {
   if (!req.user.student_id) return fail(res, 400, 400, '当前账号还没有绑定学号');
 
   const { name, gender } = req.body || {};
-  if (!name || !String(name).trim()) return fail(res, 400, 400, '姓名不能为空');
-  if (gender && !['男', '女'].includes(gender)) return fail(res, 400, 400, '性别只能是男或女');
+  const nameStr = String(name || '').trim();
+  if (!nameStr) return fail(res, 400, 400, '姓名不能为空');
+  if (nameStr.length > 50) return fail(res, 400, 400, '姓名不能超过50个字符');
+
+  // R13：允许提交中文，但统一存 M/F；非法值直接拒绝
+  const normalized = normalizeGender(gender);
+  if (normalized === 'INVALID') return fail(res, 400, 400, '性别只能是 男 / 女 或 M / F');
 
   const [rows] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [req.user.student_id]);
   if (rows.length === 0) return fail(res, 404, 404, '学生信息不存在');
 
   await pool.query(
     'UPDATE student SET name = ?, gender = ? WHERE student_id = ?',
-    [String(name).trim(), gender || null, req.user.student_id]
+    [nameStr, normalized, req.user.student_id]
   );
-  ok(res, { student_id: req.user.student_id, name: String(name).trim(), gender: gender || null }, '资料已更新');
+  ok(res, {
+    student_id: req.user.student_id,
+    name: nameStr,
+    gender: normalized,
+    gender_label: genderLabel(normalized),
+  }, '资料已更新');
 }));
 
 // 当前学生自己的明细记录（成绩 / 科研 / 实践），只读

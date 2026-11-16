@@ -1,53 +1,67 @@
-// 学生数据的写权限判定（管理员全权、教师按负责专业、学生只读）
+// 写入权限判断：管理员全量、教师限本人负责专业、学生只读
 const pool = require('../config/db');
 
-// 教师负责的专业列表
+const EDIT_SWITCH_KEY = 'allow_teacher_edit_score';
+
+// 教师负责的专业列表；未配置时返回空数组，按"无权限"处理
 async function teacherMajors(teacherNo) {
   if (!teacherNo) return [];
-  const [rows] = await pool.query('SELECT major FROM teacher_major WHERE teacher_no = ?', [teacherNo]);
-  return rows.map((r) => r.major);
+  try {
+    const [rows] = await pool.query('SELECT major FROM teacher_major WHERE teacher_no = ?', [teacherNo]);
+    return rows.map((r) => r.major).filter(Boolean);
+  } catch (err) {
+    return [];
+  }
 }
 
-// 某学生是否落在教师负责的专业范围内
-async function teacherCoversStudent(teacherNo, studentId) {
-  if (!teacherNo || !studentId) return false;
-  const [rows] = await pool.query(
-    `SELECT 1 FROM student s
-     JOIN teacher_major tm ON tm.major = s.major
-     WHERE s.student_id = ? AND tm.teacher_no = ? LIMIT 1`,
-    [studentId, teacherNo]
-  );
-  return rows.length > 0;
-}
-
-// 全局开关：管理员是否允许教师修改成绩
+// 管理员是否已开放教师修改成绩的开关（R09：字符串 '1' / 布尔都要正确识别）
 async function isTeacherEditScoreAllowed() {
-  const [rows] = await pool.query(
-    "SELECT config_value FROM sys_config WHERE config_key = 'allow_teacher_edit_score'"
-  );
-  return rows.length > 0 && String(rows[0].config_value) === '1';
+  try {
+    const [rows] = await pool.query(
+      'SELECT config_value FROM sys_config WHERE config_key = ?',
+      [EDIT_SWITCH_KEY]
+    );
+    if (rows.length === 0) return false;
+    const v = rows[0].config_value;
+    return v === '1' || v === 1 || v === true || v === 'true';
+  } catch (err) {
+    return false;
+  }
 }
 
-// 统一判定：能否对该学生执行写操作
-// requireEditSwitch 为 true 时，教师还需要管理员已开放"修改成绩"开关
-async function canWriteStudent(user, studentId, options = {}) {
-  const { requireEditSwitch = false } = options;
-  if (!user) return { allowed: false, reason: '未登录或登录已过期' };
+/**
+ * 判断当前登录账号能否对某个学生执行写操作
+ * @param {Object} user req.user
+ * @param {string} studentId 学生学号
+ * @param {Object} options requireEditSwitch: 修改/删除已有明细时需要管理员开放开关
+ * @returns {Promise<{allowed: boolean, reason?: string}>}
+ */
+async function canWriteStudent(user, studentId, { requireEditSwitch = false } = {}) {
+  if (!user) return { allowed: false, reason: '未登录' };
   if (user.role === 'admin') return { allowed: true };
-  if (user.role !== 'teacher') return { allowed: false, reason: '当前账号无权操作学生数据' };
-  if (!user.teacher_no) return { allowed: false, reason: '教师账号未绑定工号，请联系管理员' };
-  if (requireEditSwitch && !(await isTeacherEditScoreAllowed())) {
-    return { allowed: false, reason: '管理员当前未开放教师修改成绩的权限' };
+  if (user.role !== 'teacher') {
+    return { allowed: false, reason: '学生账号只能查看自己的数据，无写入权限' };
   }
-  if (!(await teacherCoversStudent(user.teacher_no, studentId))) {
-    return { allowed: false, reason: '该学生不在你负责的专业范围内' };
+
+  const [students] = await pool.query('SELECT major FROM student WHERE student_id = ?', [studentId]);
+  if (students.length === 0) return { allowed: false, reason: '学生不存在' };
+
+  const majors = await teacherMajors(user.teacher_no);
+  if (majors.length === 0) {
+    return { allowed: false, reason: '当前教师账号未设置负责专业，请联系管理员配置后再操作' };
   }
+  if (!students[0].major || !majors.includes(students[0].major)) {
+    return { allowed: false, reason: '该学生不属于你负责的专业，无权操作' };
+  }
+
+  if (requireEditSwitch) {
+    const allowed = await isTeacherEditScoreAllowed();
+    if (!allowed) {
+      return { allowed: false, reason: '管理员尚未开放教师修改权限，当前仅管理员可修改，请新增记录或联系管理员' };
+    }
+  }
+
   return { allowed: true };
 }
 
-module.exports = {
-  teacherMajors,
-  teacherCoversStudent,
-  isTeacherEditScoreAllowed,
-  canWriteStudent,
-};
+module.exports = { teacherMajors, isTeacherEditScoreAllowed, canWriteStudent, EDIT_SWITCH_KEY };
