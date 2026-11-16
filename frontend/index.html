@@ -1279,7 +1279,15 @@ async function saveStudentEdit() {
   }
 }
 
-function openAddStudent() { document.getElementById('addStudentForm').style.display = 'block'; }
+// 打开添加表单并滚动到可视区域：表单在表格下方，长列表时容易以为“没反应”
+function openAddStudent() {
+  const form = document.getElementById('addStudentForm');
+  if (!form) return;
+  form.style.display = 'block';
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const sid = document.getElementById('newSid');
+  if (sid) setTimeout(() => sid.focus({ preventScroll: true }), 250);
+}
 
 // ========== CSV 批量导入 ==========
 // 解析 CSV（支持双引号包裹、引号内逗号/换行、"" 转义）
