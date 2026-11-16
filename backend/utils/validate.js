@@ -105,8 +105,9 @@ function validate(rules) {
         req.body[field] = str;
       }
 
-      // 枚举（用原始值比较，允许业务自定义映射后再校验）
-      if (rule.enum && !rule.enum.includes(value)) {
+      // 枚举：与规范化后的值比较（字符串已 trim、数字已转 Number），
+      // 否则 " M " 这类带空白的输入会因为比较原始值而被误判非法
+      if (rule.enum && !rule.enum.includes(req.body[field])) {
         errors.push(`${label}只能是：${rule.enum.join(' / ')}`);
       }
     }

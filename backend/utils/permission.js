@@ -10,6 +10,7 @@ async function teacherMajors(teacherNo) {
     const [rows] = await pool.query('SELECT major FROM teacher_major WHERE teacher_no = ?', [teacherNo]);
     return rows.map((r) => r.major).filter(Boolean);
   } catch (err) {
+    // 表未初始化等异常情况统一按"无负责专业"处理，避免把底层错误抛给调用方
     return [];
   }
 }

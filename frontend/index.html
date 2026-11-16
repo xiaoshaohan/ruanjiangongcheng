@@ -2456,13 +2456,15 @@ async function recalcAll() {
   toast('正在重算，请稍候...');
   const res = await api('/api/config/portrait/recalculate-all', 'POST');
   if (res.code === 200) {
-    // R44：返回 done / failed / config_version，失败要能看到是谁
+    // R44：后端 failed 是失败学生数组，取长度展示，并列出失败学号
     const d = res.data || {};
-    let msg = `重算完成：成功 ${d.done || 0} 人，失败 ${d.failed || 0} 人（配置版本 ${d.config_version || '-'}）`;
-    if (d.failed_students && d.failed_students.length) {
-      msg += `；失败学号：${d.failed_students.slice(0, 20).join('、')}`;
+    const failedList = Array.isArray(d.failed) ? d.failed : [];
+    let msg = `重算完成：成功 ${d.done || 0} 人，失败 ${failedList.length} 人（配置版本 ${d.config_version || '-'}）`;
+    if (failedList.length) {
+      const ids = failedList.slice(0, 20).map((x) => (x && x.student_id) || x);
+      msg += `；失败学号：${ids.join('、')}`;
     }
-    toast(msg, d.failed ? 'error' : 'success');
+    toast(msg, failedList.length ? 'error' : 'success');
     dashFiltersLoaded = false;
     if (typeof loadDashboard === 'function' && document.getElementById('page-dashboard').classList.contains('active')) {
       loadDashboard();

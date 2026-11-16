@@ -4,7 +4,7 @@ const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
 const { normalizeGender, dateRangeProblem } = require('../utils/fields');
 const { isRealDate } = require('../utils/validate');
-const { recalculateQuietly } = require('../utils/recalc');
+const { recalculateMany } = require('../utils/recalc');
 const { writeAudit } = require('../utils/audit');
 
 const router = express.Router();
@@ -29,7 +29,7 @@ function readableError(e) {
   if (code === 'ER_DUP_ENTRY') return '记录重复，库中已存在相同数据';
   if (code === 'ER_NO_REFERENCED_ROW_2' || code === 'ER_NO_REFERENCED_ROW') return '学号不存在，请先导入该学生';
   if (code === 'ER_DATA_TOO_LONG' || code === 'WARN_DATA_TRUNCATED') return '内容超出字段长度或范围限制';
-  if (code === 'ER_TRUNCATED_WOONG_VALUE' || code === 'ER_TRUNCATED_WRONG_VALUE' || code === 'ER_WRONG_VALUE') {
+  if (code === 'ER_TRUNCATED_WRONG_VALUE' || code === 'ER_WRONG_VALUE') {
     return '数值或日期格式不正确';
   }
   if (code === 'ER_BAD_NULL_ERROR') return '必填字段为空';
@@ -47,13 +47,8 @@ function pushError(result, label, message) {
 
 // 导入完成后批量重算受影响学生的画像（R15）
 async function recalcStudents(studentIds) {
-  let done = 0;
-  for (const sid of studentIds) {
-    if (done >= MAX_RECALC) break;
-    const result = await recalculateQuietly(sid);
-    if (result) done++;
-  }
-  return { recalculated: done, skipped: Math.max(0, studentIds.size - done) };
+  const recalc = await recalculateMany(studentIds, { limit: MAX_RECALC });
+  return recalc;
 }
 
 function readRows(req, res) {

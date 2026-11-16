@@ -27,7 +27,7 @@ function verifyPassword(plain, stored) {
 
 // ---------- 密码强度策略（R37） ----------
 const MIN_PASSWORD_LENGTH = 8;
-// 常见弱口令，新密码不允许直接使用
+// 常见弱口令，新密码不允许直接使用（统一小写比较，大小写变体同样拦截）
 const WEAK_PASSWORDS = new Set([
   '12345678', '123456789', '11111111', '00000000', '88888888',
   'password', 'passw0rd', 'admin123', 'qwerty123', 'abc12345',
