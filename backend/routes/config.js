@@ -142,7 +142,8 @@ router.put('/system', adminOnly, asyncHandler(async (req, res) => {
     targetId: 'allow_teacher_edit_score',
     after: { allow_teacher_edit_score: allowed },
   });
-  ok(res, { allow_teacher_edit_score: allowed }, allowed ? '已开放教师修改成绩' : '已收回教师修改成绩的权限');
+  ok(res, { allow_teacher_edit_score: allowed },
+    allowed ? '已开放教师修改学生明细（成绩/科研/实践）' : '已收回教师修改学生明细的权限');
 }));
 
 module.exports = router;

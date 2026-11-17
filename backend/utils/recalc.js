@@ -26,12 +26,35 @@ async function recalculateQuietly(studentId, conn) {
   }
 }
 
-// 批量重算：并行执行，单个失败只影响自己，避免长串行耗时
+// 批量重算：分批并行，单批 50 人，避免几千人导入时一次性打满连接池；
+// 单个失败只影响自己，并返回 skipped/failed 明细供调用方提示（S3）
 async function recalculateMany(studentIds, { limit = Infinity } = {}) {
-  const total = studentIds && typeof studentIds.size === 'number' ? studentIds.size : (studentIds ? studentIds.length : 0);
-  const ids = [...studentIds].slice(0, limit);
-  const results = await Promise.all(ids.map((sid) => recalculateQuietly(sid)));
-  return { recalculated: results.filter(Boolean).length, skipped: Math.max(0, total - ids.length) };
+  const all = [...(studentIds || [])];
+  const target = limit === Infinity ? all : all.slice(0, limit);
+  const skippedIds = all.slice(target.length);
+
+  const BATCH_SIZE = 50;
+  const okIds = [];
+  const failedIds = [];
+  for (let i = 0; i < target.length; i += BATCH_SIZE) {
+    const chunk = target.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(
+      chunk.map(async (sid) => ({ sid, ok: !!(await recalculateQuietly(sid)) }))
+    );
+    for (const r of results) {
+      if (r.ok) okIds.push(r.sid);
+      else failedIds.push(r.sid);
+    }
+  }
+
+  return {
+    total: all.length,
+    recalculated: okIds.length,
+    failed: failedIds.length,
+    failed_ids: failedIds,
+    skipped: skippedIds.length,
+    skipped_ids: skippedIds,
+  };
 }
 
 module.exports = { recalculateStudent, recalculateQuietly, recalculateMany };

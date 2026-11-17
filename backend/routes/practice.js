@@ -5,6 +5,7 @@ const { canWriteStudent } = require('../utils/permission');
 const { dateRangeProblem } = require('../utils/fields');
 const { isRealDate } = require('../utils/validate');
 const { recalculateQuietly } = require('../utils/recalc');
+const { PRACTICE_TYPES } = require('../utils/enums');
 
 const router = express.Router();
 
@@ -17,6 +18,10 @@ function validatePractice(body) {
 
   const type = body.type === undefined || body.type === '' ? null : String(body.type).trim();
   if (type && type.length > 50) errors.push('类型不能超过50个字符');
+  // G4：实践类型走白名单，未知类型不再入库
+  else if (type && !PRACTICE_TYPES.includes(type)) {
+    errors.push(`实践类型只能是 ${PRACTICE_TYPES.join(' / ')}`);
+  }
 
   const description = body.description === undefined || body.description === '' ? null : String(body.description).trim();
   if (description && description.length > 500) errors.push('描述不能超过500个字符');

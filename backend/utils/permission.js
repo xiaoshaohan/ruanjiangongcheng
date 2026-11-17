@@ -3,15 +3,16 @@ const pool = require('../config/db');
 
 const EDIT_SWITCH_KEY = 'allow_teacher_edit_score';
 
-// 教师负责的专业列表；未配置时返回空数组，按"无权限"处理
+// 教师负责的专业列表；只有"表未初始化"才回退空数组，其他数据库故障必须抛出（G9）
 async function teacherMajors(teacherNo) {
   if (!teacherNo) return [];
   try {
     const [rows] = await pool.query('SELECT major FROM teacher_major WHERE teacher_no = ?', [teacherNo]);
     return rows.map((r) => r.major).filter(Boolean);
   } catch (err) {
-    // 表未初始化等异常情况统一按"无负责专业"处理，避免把底层错误抛给调用方
-    return [];
+    if (err && err.code === 'ER_NO_SUCH_TABLE') return [];
+    console.error('[permission] 读取教师负责专业失败', err.message);
+    throw err;
   }
 }
 
@@ -26,7 +27,10 @@ async function isTeacherEditScoreAllowed() {
     const v = rows[0].config_value;
     return v === '1' || v === 1 || v === true || v === 'true';
   } catch (err) {
-    return false;
+    // 迁移未执行时按"开关未启用"处理；其他故障向上抛，避免把系统故障伪装成权限不足（G9）
+    if (err && err.code === 'ER_NO_SUCH_TABLE') return false;
+    console.error('[permission] 读取教师修改权限开关失败', err.message);
+    throw err;
   }
 }
 

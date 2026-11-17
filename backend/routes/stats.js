@@ -1,8 +1,8 @@
 const express = require('express');
 const pool = require('../config/db');
 const { ok, fail, asyncHandler } = require('../utils/response');
-const { toRates } = require('../utils/portrait');
-const { getPortraitConfig } = require('../utils/portraitConfig');
+const { toRates, limitsFromSnapshot } = require('../utils/portrait');
+const { getPortraitConfig, configVersion } = require('../utils/portraitConfig');
 
 const router = express.Router();
 
@@ -94,7 +94,8 @@ router.get('/', asyncHandler(async (req, res) => {
 
   const [topStudents] = await pool.query(
     `SELECT p.student_id, s.name, s.college, s.major, s.grade,
-            p.total_score, p.academic_score, p.research_score, p.practice_score
+            p.total_score, p.academic_score, p.research_score, p.practice_score,
+            p.config_snapshot, p.config_version
      FROM ability_profile p
      JOIN student s ON p.student_id = s.student_id
      WHERE 1=1` + sCond + `
@@ -103,10 +104,33 @@ router.get('/', asyncHandler(async (req, res) => {
     sParams
   );
 
-  const avgAcademic = avgRows[0].avg_academic;
-  const avgResearch = avgRows[0].avg_research;
-  const avgPractice = avgRows[0].avg_practice;
-  const limits = (await getPortraitConfig()).limits;
+  // S4：平均得分率不再用"当前配置"套画像分数，而是逐条按画像快照换算后求平均，
+  // 和画像页、导出、对比页保持同一口径（配置改了但没重算时也不会出现两个答案）。
+  const [rateRows] = await pool.query(
+    `SELECT p.academic_score, p.research_score, p.practice_score,
+            p.config_snapshot, p.config_version
+     FROM ability_profile p
+     JOIN student s ON p.student_id = s.student_id
+     WHERE 1=1` + sCond,
+    sParams
+  );
+  const config = await getPortraitConfig();
+  const currentVersion = configVersion(config);
+  const round2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
+
+  let sumAcademicRate = 0;
+  let sumResearchRate = 0;
+  let sumPracticeRate = 0;
+  let mixedSnapshot = false;
+  for (const row of rateRows) {
+    const limits = limitsFromSnapshot(row.config_snapshot, config.limits);
+    const rt = toRates(row, limits);
+    sumAcademicRate += rt.academic;
+    sumResearchRate += rt.research;
+    sumPracticeRate += rt.practice;
+    if (row.config_version && row.config_version !== currentVersion) mixedSnapshot = true;
+  }
+  const rateCount = rateRows.length;
 
   ok(res, {
     filters: { college: college || '', major: major || '', grade: grade || '', semester: semester || '' },
@@ -119,13 +143,22 @@ router.get('/', asyncHandler(async (req, res) => {
     },
     averages: {
       ...avgRows[0],
-      // 三个维度的平均得分率，与画像页、对比页同一口径；无数据时为 0
-      avg_academic_rate: avgAcademic == null ? 0 : toRates({ academic_score: avgAcademic }, limits).academic,
-      avg_research_rate: avgResearch == null ? 0 : toRates({ research_score: avgResearch }, limits).research,
-      avg_practice_rate: avgPractice == null ? 0 : toRates({ practice_score: avgPractice }, limits).practice,
+      // 三个维度的平均得分率，与画像页、对比页、导出一致，按各画像配置快照换算
+      avg_academic_rate: rateCount ? round2(sumAcademicRate / rateCount) : 0,
+      avg_research_rate: rateCount ? round2(sumResearchRate / rateCount) : 0,
+      avg_practice_rate: rateCount ? round2(sumPracticeRate / rateCount) : 0,
+    },
+    // 口径标注：rates 一律来自画像快照，current_config_version 为当前生效配置
+    rate_basis: {
+      basis: 'portrait_config_snapshot',
+      current_config_version: currentVersion,
+      mixed_snapshot: mixedSnapshot,
     },
     score_distribution: distRows[0],
-    top_students: topStudents.map((s) => ({ ...s, rates: toRates(s, limits) })),
+    top_students: topStudents.map((s) => {
+      const { config_snapshot: snapshot, ...rest } = s;
+      return { ...rest, rates: toRates(s, limitsFromSnapshot(snapshot, config.limits)) };
+    }),
   });
 }));
 

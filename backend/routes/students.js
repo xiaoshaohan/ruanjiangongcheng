@@ -209,8 +209,16 @@ router.get('/:id/impact', adminOnly, asyncHandler(async (req, res) => {
 }));
 
 // 删除学生（R25：一并清理推荐历史，并解绑/禁用关联账号，避免孤儿数据与死账号）
+// G6：服务端强制二次确认，confirm_student_id 必须与目标学号一致，防止脚本/误调用直删
 router.delete('/:id', adminOnly, asyncHandler(async (req, res) => {
   const sid = req.params.id;
+
+  const confirm = req.query.confirm_student_id !== undefined
+    ? req.query.confirm_student_id
+    : (req.body && req.body.confirm_student_id);
+  if (!confirm || String(confirm).trim() !== String(sid)) {
+    return fail(res, 400, 400, '删除前请确认学号：请提供 confirm_student_id 且与要删除的学号一致');
+  }
 
   const [exists] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [sid]);
   if (exists.length === 0) return fail(res, 404, 404, '学生不存在');

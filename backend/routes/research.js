@@ -5,6 +5,7 @@ const { canWriteStudent } = require('../utils/permission');
 const { dateRangeProblem } = require('../utils/fields');
 const { isRealDate } = require('../utils/validate');
 const { recalculateQuietly } = require('../utils/recalc');
+const { RESEARCH_LEVELS } = require('../utils/enums');
 
 const router = express.Router();
 
@@ -20,6 +21,10 @@ function validateResearch(body) {
 
   const level = body.level === undefined || body.level === '' ? null : String(body.level).trim();
   if (level && level.length > 50) errors.push('级别不能超过50个字符');
+  // G4：未知级别不允许静默入库，否则画像把它按 0 分处理
+  else if (level && !RESEARCH_LEVELS.includes(level)) {
+    errors.push(`科研级别只能是 ${RESEARCH_LEVELS.join(' / ')}`);
+  }
 
   const result = body.result === undefined || body.result === '' ? null : String(body.result).trim();
   if (result && result.length > 200) errors.push('成果不能超过200个字符');

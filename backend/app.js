@@ -17,10 +17,10 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  // 前端仍在使用内联脚本与 ECharts CDN，故放开 unsafe-inline 与 jsdelivr
+  // 前端已把 ECharts 本地化到 frontend/js，这里不再放行外部 CDN（M4）
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; " +
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
     "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'"
   );
   next();
@@ -113,12 +113,15 @@ app.use((err, req, res, next) => {
   fail(res, 500, 500, '服务器内部错误');
 });
 
-// 启动服务
-app.listen(PORT, async () => {
-  console.log(`服务器运行在 http://localhost:${PORT}`);
-  try {
-    await authRouter.ensureDefaultUser();
-  } catch (err) {
-    console.error('初始化默认账号失败:', err.message);
-  }
+// 启动服务：先完成默认账号初始化，失败直接退出，避免"服务在跑但没有可用管理员"（S1）
+async function bootstrap() {
+  await authRouter.ensureDefaultUser();
+  app.listen(PORT, () => {
+    console.log(`服务器运行在 http://localhost:${PORT}`);
+  });
+}
+
+bootstrap().catch((err) => {
+  console.error('启动失败:', err.message);
+  process.exit(1);
 });

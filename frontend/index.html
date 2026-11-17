@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>学生成长与职业发展数据中台</title>
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="js/echarts.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -425,6 +425,12 @@
       </svg>
       系统设置
     </div>
+    <div class="menu-item" data-page="audit" id="menuAudit" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M6 3h9l4 4v14H6z"/><path d="M9 10h7M9 14h7M9 18h4"/>
+      </svg>
+      审计日志
+    </div>
   </div>
 
   <div class="main">
@@ -755,16 +761,39 @@
       </div>
 
       <div class="card">
-        <div class="card-title">成绩修改权限</div>
-        <div class="cfg-hint">关闭时只有管理员能新增、修改、删除成绩；开启后，教师可以在自己负责的专业范围内修改成绩。录入成绩不受此开关影响。</div>
+        <div class="card-title">教师修改学生明细权限</div>
+        <div class="cfg-hint">关闭时只有管理员能新增、修改、删除成绩、科研和实践记录；开启后，教师可以在自己负责的专业范围内修改和删除这三类明细记录（成绩修改权限由本开关统一控制）。录入新记录不受此开关影响。</div>
         <div class="form-row">
-          <label>允许教师修改成绩：</label>
+          <label>允许教师修改学生明细：</label>
           <label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:#2c3e50">
             <input type="checkbox" id="cfgAllowTeacherEdit" style="width:16px;height:16px"> 开启
           </label>
           <button class="btn btn-primary" style="margin-left:14px" onclick="saveSystemConfig()">保存开关</button>
         </div>
         <div class="cfg-hint">当前状态：<span id="teacherEditState">读取中...</span></div>
+      </div>
+    </div>
+
+    <!-- 审计日志页（M3：管理员可直接在界面筛选关键操作记录） -->
+    <div class="page" id="page-audit">
+      <div class="card">
+        <div class="card-title">审计日志</div>
+        <div class="search-bar">
+          <input type="text" id="auditAction" placeholder="按动作筛选，如 student.delete">
+          <input type="text" id="auditActor" placeholder="按操作人筛选">
+          <select id="auditLimit">
+            <option value="100">最近 100 条</option>
+            <option value="300">最近 300 条</option>
+            <option value="500">最近 500 条</option>
+          </select>
+          <button class="btn btn-primary" onclick="loadAudit()">查询</button>
+          <button class="btn btn-default" onclick="clearAuditFilter()">清空筛选</button>
+        </div>
+        <div class="cfg-hint" id="auditHint"></div>
+        <table>
+          <thead><tr><th>时间</th><th>操作人</th><th>角色</th><th>动作</th><th>对象</th><th>IP</th></tr></thead>
+          <tbody id="auditBody"><tr><td colspan="6" class="empty-cell">加载中...</td></tr></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -868,6 +897,7 @@ const MENU_RULES = {
   users: ['admin'],
   myprofile: ['student'],
   settings: ['admin'],
+  audit: ['admin'],
 };
 
 // 切换页面并按需加载数据
@@ -888,6 +918,7 @@ function activatePage(page) {
   if (page === 'users') loadUsers();
   if (page === 'myprofile') loadMyProfile();
   if (page === 'settings') loadSettings();
+  if (page === 'audit') loadAudit();
 }
 
 async function initRole() {
@@ -1252,20 +1283,34 @@ function openEditStudent(sid) {
 async function saveStudentEdit() {
   if (!editingStudentId) return toast('请先选择学生', 'error');
 
-  // R04：只提交允许修改的字段，未提交的字段后端不会覆盖
-  const data = {
-    name: document.getElementById('editName').value.trim(),
-    gender: document.getElementById('editGender').value,
-    phone: document.getElementById('editPhone').value.trim(),
-    email: document.getElementById('editEmail').value.trim(),
+  // S2：只提交真正改动过的字段。教师端回填不到联系方式时（历史数据/接口缺字段），
+  // 空输入框不再被当成"清空"，避免保存姓名时把 phone/email 覆盖成 NULL。
+  const original = students.find((x) => String(x.student_id) === String(editingStudentId))
+    || studentRows.find((x) => String(x.student_id) === String(editingStudentId))
+    || {};
+
+  const name = document.getElementById('editName').value.trim();
+  if (!name) return toast('姓名不能为空', 'error');
+
+  const data = {};
+  const put = (key, value) => {
+    if (String(value == null ? '' : value) !== String(original[key] == null ? '' : original[key])) {
+      data[key] = value;
+    }
   };
-  if (!data.name) return toast('姓名不能为空', 'error');
+
+  put('name', name);
+  put('gender', document.getElementById('editGender').value);
+  put('phone', document.getElementById('editPhone').value.trim());
+  put('email', document.getElementById('editEmail').value.trim());
 
   if (CURRENT_ROLE === 'admin') {
-    data.college = document.getElementById('editCollege').value.trim();
-    data.major = document.getElementById('editMajor').value.trim();
-    data.grade = document.getElementById('editGrade').value;
+    put('college', document.getElementById('editCollege').value.trim());
+    put('major', document.getElementById('editMajor').value.trim());
+    put('grade', document.getElementById('editGrade').value);
   }
+
+  if (Object.keys(data).length === 0) return toast('没有需要保存的修改');
 
   const res = await api('/api/students/' + encodeURIComponent(editingStudentId), 'PUT', data);
   if (res.code === 200) {
@@ -1532,7 +1577,9 @@ async function confirmDeleteStudent() {
   const typed = document.getElementById('delConfirmSid').value.trim();
   if (typed !== pendingDeleteSid) return toast('输入的学号与要删除的学生不一致', 'error');
 
-  const res = await api('/api/students/' + encodeURIComponent(pendingDeleteSid), 'DELETE');
+  // G6：把用户输入的学号一并提交给服务端做二次确认，不只是前端校验
+  const res = await api('/api/students/' + encodeURIComponent(pendingDeleteSid)
+    + '?confirm_student_id=' + encodeURIComponent(typed), 'DELETE');
   if (res.code === 200) {
     toast(res.message || '删除成功');
     closeDelStudent();
@@ -2351,6 +2398,47 @@ async function loadMyProfile() {
     ${practice.length ? `<table><thead><tr><th>活动名称</th><th>类型</th><th>时长(小时)</th><th>描述</th></tr></thead><tbody>
       ${practice.map(r => `<tr><td>${esc(r.activity_name)}</td><td>${esc(r.type || '-')}</td><td>${r.hours || 0}</td><td>${esc(r.description || '-')}</td></tr>`).join('')}
     </tbody></table>` : '<div class="empty">暂无实践经历</div>'}`;
+}
+
+// ========== 审计日志（仅管理员，M3） ==========
+function clearAuditFilter() {
+  document.getElementById('auditAction').value = '';
+  document.getElementById('auditActor').value = '';
+  document.getElementById('auditLimit').value = '100';
+  loadAudit();
+}
+
+async function loadAudit() {
+  const action = document.getElementById('auditAction').value.trim();
+  const actor = document.getElementById('auditActor').value.trim();
+  const limit = document.getElementById('auditLimit').value || '100';
+  const qs = new URLSearchParams();
+  if (action) qs.set('action', action);
+  if (actor) qs.set('actor', actor);
+  qs.set('limit', limit);
+
+  const res = await api('/api/audit?' + qs.toString());
+  const body = document.getElementById('auditBody');
+  const hint = document.getElementById('auditHint');
+  if (res.code !== 200) {
+    body.innerHTML = '<tr><td colspan="6" class="empty-cell">加载失败</td></tr>';
+    hint.textContent = res.message || '审计日志加载失败';
+    return;
+  }
+  const rows = res.data || [];
+  hint.textContent = `共 ${rows.length} 条记录（最多显示最近 500 条）`;
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="6" class="empty-cell">暂无记录</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map((r) => `<tr>
+    <td>${esc(String(r.created_at || '').replace('T', ' ').slice(0, 19))}</td>
+    <td>${esc(r.actor_username || '-')}</td>
+    <td>${esc(r.actor_role || '-')}</td>
+    <td>${esc(r.action || '-')}</td>
+    <td>${esc((r.target_type || '') + (r.target_id ? ' / ' + r.target_id : ''))}</td>
+    <td>${esc(r.ip || '-')}</td>
+  </tr>`).join('');
 }
 
 // ========== 系统设置（仅管理员） ==========

@@ -1,5 +1,5 @@
 -- 性能优化：索引与视图（可重复执行）
-USE student_portrait;
+-- 库名由 mysql -D 参数指定，例如：mysql -uroot -p -D student_portrait < 本文件.sql
 
 -- 排行查询（ORDER BY total_score）走索引
 CREATE INDEX idx_profile_total_score ON ability_profile (total_score);

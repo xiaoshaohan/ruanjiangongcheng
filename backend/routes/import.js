@@ -6,12 +6,14 @@ const { normalizeGender, dateRangeProblem } = require('../utils/fields');
 const { isRealDate } = require('../utils/validate');
 const { recalculateMany } = require('../utils/recalc');
 const { writeAudit } = require('../utils/audit');
+const { RESEARCH_LEVELS, PRACTICE_TYPES } = require('../utils/enums');
 
 const router = express.Router();
 
 const MAX_ROWS = 5000;
 const MAX_ERRORS = 200;      // 明细最多返回 200 条，避免响应体过大
-const MAX_RECALC = 200;      // 单次导入后自动重算画像的学生上限
+// S3：不再用 200 人的上限截断重算，导入多少人就重算多少人；
+// 分批发并发在 recalculateMany 内部处理，避免几千行一次性打满连接池。
 
 // 空字符串转 NULL，避免 DATE / DECIMAL 报错
 const v = (x) => (x === undefined || x === null || String(x).trim() === '' ? null : String(x).trim());
@@ -45,10 +47,25 @@ function pushError(result, label, message) {
   if (result.errors.length < MAX_ERRORS) result.errors.push({ row: label, message });
 }
 
-// 导入完成后批量重算受影响学生的画像（R15）
+// 导入完成后批量重算受影响学生的画像（R15 / S3）
 async function recalcStudents(studentIds) {
-  const recalc = await recalculateMany(studentIds, { limit: MAX_RECALC });
-  return recalc;
+  return recalculateMany(studentIds);
+}
+
+// 把重算结果写进响应，未重算/重算失败的学生要明确告诉调用方
+function applyRecalc(result, recalc) {
+  result.recalculated = recalc.recalculated;
+  result.recalc_failed = recalc.failed || 0;
+  result.recalc_failed_ids = recalc.failed_ids || [];
+  result.skipped = recalc.skipped || 0;
+  result.skipped_ids = recalc.skipped_ids || [];
+}
+
+function recalcMessage(recalc) {
+  const parts = [`已重算 ${recalc.recalculated} 名学生画像`];
+  if (recalc.failed) parts.push(`重算失败 ${recalc.failed} 人`);
+  if (recalc.skipped) parts.push(`未重算 ${recalc.skipped} 人`);
+  return parts.join('，');
 }
 
 function readRows(req, res) {
@@ -115,8 +132,11 @@ router.post('/students', asyncHandler(async (req, res) => {
         updates.phone = v(r.phone);
       }
       if (v(r.email)) {
-        if (String(v(r.email)).length > 100) throw rowError('邮箱不能超过100个字符');
-        updates.email = v(r.email);
+        // G5：导入路径复用与手工新增一致的邮箱格式校验，非法邮箱不入库
+        const email = v(r.email);
+        if (String(email).length > 100) throw rowError('邮箱不能超过100个字符');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw rowError('邮箱格式不正确');
+        updates.email = email;
       }
 
       const [existing] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [sid]);
@@ -147,7 +167,7 @@ router.post('/students', asyncHandler(async (req, res) => {
   }
 
   const recalc = await recalcStudents(touched);
-  result.recalculated = recalc.recalculated;
+  applyRecalc(result, recalc);
 
   await writeAudit(req, {
     action: 'import' + req.path,
@@ -156,7 +176,7 @@ router.post('/students', asyncHandler(async (req, res) => {
     after: { total: result.total, success: result.success, failed: result.failed, recalculated: result.recalculated },
   });
 
-  ok(res, result, `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条，已重算 ${recalc.recalculated} 名学生画像`);
+  ok(res, result, `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条，${recalcMessage(recalc)}`);
 }));
 
 // ---------- 成绩 ----------
@@ -209,7 +229,7 @@ router.post('/academic', asyncHandler(async (req, res) => {
   }
 
   const recalc = await recalcStudents(touched);
-  result.recalculated = recalc.recalculated;
+  applyRecalc(result, recalc);
 
   await writeAudit(req, {
     action: 'import' + req.path,
@@ -218,7 +238,7 @@ router.post('/academic', asyncHandler(async (req, res) => {
     after: { total: result.total, success: result.success, failed: result.failed, recalculated: result.recalculated },
   });
 
-  ok(res, result, `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条，已重算 ${recalc.recalculated} 名学生画像`);
+  ok(res, result, `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条，${recalcMessage(recalc)}`);
 }));
 
 // ---------- 科研 ----------
@@ -247,12 +267,18 @@ router.post('/research', asyncHandler(async (req, res) => {
       const rangeError = dateRangeProblem(startDate, endDate);
       if (rangeError) throw rowError(rangeError);
 
+      // G4：科研级别必须命中白名单，未知级别不允许入库
+      const level = v(r.level);
+      if (level && !RESEARCH_LEVELS.includes(level)) {
+        throw rowError(`科研级别只能是 ${RESEARCH_LEVELS.join(' / ')}`);
+      }
+
       const [stu] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [sid]);
       if (stu.length === 0) throw rowError('学号不存在，请先导入该学生');
 
       await pool.query(
         'INSERT INTO research_project (student_id, project_name, role, level, start_date, end_date, result) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [sid, projectName, v(r.role), v(r.level), startDate, endDate, v(r.result)]
+        [sid, projectName, v(r.role), level, startDate, endDate, v(r.result)]
       );
       touched.add(sid);
       result.success++;
@@ -263,7 +289,7 @@ router.post('/research', asyncHandler(async (req, res) => {
   }
 
   const recalc = await recalcStudents(touched);
-  result.recalculated = recalc.recalculated;
+  applyRecalc(result, recalc);
 
   await writeAudit(req, {
     action: 'import' + req.path,
@@ -272,7 +298,7 @@ router.post('/research', asyncHandler(async (req, res) => {
     after: { total: result.total, success: result.success, failed: result.failed, recalculated: result.recalculated },
   });
 
-  ok(res, result, `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条，已重算 ${recalc.recalculated} 名学生画像`);
+  ok(res, result, `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条，${recalcMessage(recalc)}`);
 }));
 
 // ---------- 实践 ----------
@@ -309,12 +335,18 @@ router.post('/practice', asyncHandler(async (req, res) => {
         hours = Math.round(num * 10) / 10;
       }
 
+      // G4：实践类型必须命中白名单
+      const practiceType = v(r.type);
+      if (practiceType && !PRACTICE_TYPES.includes(practiceType)) {
+        throw rowError(`实践类型只能是 ${PRACTICE_TYPES.join(' / ')}`);
+      }
+
       const [stu] = await pool.query('SELECT student_id FROM student WHERE student_id = ?', [sid]);
       if (stu.length === 0) throw rowError('学号不存在，请先导入该学生');
 
       await pool.query(
         'INSERT INTO practice_activity (student_id, activity_name, type, start_date, end_date, hours, description) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [sid, activityName, v(r.type), startDate, endDate, hours, v(r.description)]
+        [sid, activityName, practiceType, startDate, endDate, hours, v(r.description)]
       );
       touched.add(sid);
       result.success++;
@@ -325,7 +357,7 @@ router.post('/practice', asyncHandler(async (req, res) => {
   }
 
   const recalc = await recalcStudents(touched);
-  result.recalculated = recalc.recalculated;
+  applyRecalc(result, recalc);
 
   await writeAudit(req, {
     action: 'import' + req.path,
@@ -334,7 +366,7 @@ router.post('/practice', asyncHandler(async (req, res) => {
     after: { total: result.total, success: result.success, failed: result.failed, recalculated: result.recalculated },
   });
 
-  ok(res, result, `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条，已重算 ${recalc.recalculated} 名学生画像`);
+  ok(res, result, `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条，${recalcMessage(recalc)}`);
 }));
 
 module.exports = router;

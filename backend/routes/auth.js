@@ -95,22 +95,29 @@ function registerRateLimited(req) {
   return false;
 }
 
-// ---------- 首次启动时创建默认管理员（R37） ----------
+// ---------- 首次启动时创建默认管理员（R37 / S1） ----------
+// S1：不再提供 admin123 默认回退。库里没有任何账号时，必须显式配置
+// ADMIN_INIT_PASSWORD，否则拒绝启动；密码同样要通过强度策略校验。
 async function ensureDefaultUser() {
   const [rows] = await pool.query('SELECT COUNT(*) AS c FROM sys_user');
-  if (rows[0].c === 0) {
-    const initial = process.env.ADMIN_INIT_PASSWORD || 'admin123';
-    await pool.query(
-      'INSERT INTO sys_user (username, password_hash, role) VALUES (?, ?, ?)',
-      ['admin', hashPassword(initial), 'admin']
+  if (rows[0].c > 0) return;
+
+  const initial = process.env.ADMIN_INIT_PASSWORD;
+  if (!initial) {
+    throw new Error(
+      '首次初始化需要设置环境变量 ADMIN_INIT_PASSWORD（至少 8 位且不能是常见弱口令），已拒绝启动'
     );
-    console.log('已创建初始管理员账号 admin');
-    if (!process.env.ADMIN_INIT_PASSWORD) {
-      console.warn('警告：使用了内置初始密码，请立即登录修改密码，或在 .env 中配置 ADMIN_INIT_PASSWORD 后重新初始化');
-    } else {
-      console.log('初始密码来自环境变量 ADMIN_INIT_PASSWORD');
-    }
   }
+  const pwdError = passwordProblem(initial);
+  if (pwdError) {
+    throw new Error(`ADMIN_INIT_PASSWORD 不符合密码策略：${pwdError}`);
+  }
+
+  await pool.query(
+    'INSERT INTO sys_user (username, password_hash, role) VALUES (?, ?, ?)',
+    ['admin', hashPassword(initial), 'admin']
+  );
+  console.log('已创建初始管理员账号 admin，初始密码来自 ADMIN_INIT_PASSWORD，请登录后尽快修改');
 }
 
 // ---------- 登录 ----------

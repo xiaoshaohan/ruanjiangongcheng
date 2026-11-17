@@ -1,5 +1,5 @@
 -- v1.8：账号体系升级（教师工号、按专业匹配师生、全局成绩编辑开关）
-USE student_portrait;
+-- 库名由 mysql -D 参数指定，例如：mysql -uroot -p -D student_portrait < 本文件.sql
 
 -- 1. 教师基础数据表：教师注册时校验工号是否存在
 CREATE TABLE IF NOT EXISTS teacher (
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS teacher_major (
 
 -- 3. sys_user 增加工号绑定（MySQL 不支持 ADD COLUMN IF NOT EXISTS，用动态 SQL 保证可重复执行）
 SET @has := (SELECT COUNT(*) FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = 'student_portrait' AND TABLE_NAME = 'sys_user' AND COLUMN_NAME = 'teacher_no');
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_user' AND COLUMN_NAME = 'teacher_no');
 SET @ddl := IF(@has = 0,
   'ALTER TABLE sys_user ADD COLUMN teacher_no VARCHAR(20) DEFAULT NULL COMMENT ''教师账号绑定的工号''',
   'SELECT 1');

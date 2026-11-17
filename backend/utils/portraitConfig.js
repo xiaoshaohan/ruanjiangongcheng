@@ -16,19 +16,58 @@ const DEFAULT_CONFIG = {
   practice: { hours_per_point: 10 },
 };
 
-// 缓存带 TTL：多实例部署时旧配置最多存活 30 秒（R27）
-const CACHE_TTL_MS = 30 * 1000;
+// 缓存带 TTL：多实例部署时旧配置最多存活 5 秒（G7，原 30 秒收敛过慢）；
+// 配置写入时本实例会立即清缓存，其他实例最迟 5 秒后读到新值。
+const CACHE_TTL_MS = 5 * 1000;
 let cache = null;
 let cacheAt = 0;
+
+// 配置的允许字段与层级（G2：递归校验形状，数组/非法类型一律拒绝）
+const CONFIG_SHAPE = {
+  weights: ['academic', 'research', 'practice'],
+  limits: ['academicScore', 'researchScore', 'practiceScore'],
+  academic: ['factor'],
+  research_points: ['国家级', '省级', '校级'],
+  practice: ['hours_per_point'],
+};
+
+function shapeProblem(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '配置格式不正确';
+  for (const key of Object.keys(raw)) {
+    if (!CONFIG_SHAPE[key]) return `未知配置项：${key}`;
+  }
+  for (const [section, fields] of Object.entries(CONFIG_SHAPE)) {
+    if (raw[section] === undefined) continue;
+    const obj = raw[section];
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+      return `${section} 必须是对象，不能是数组或其他类型`;
+    }
+    for (const key of Object.keys(obj)) {
+      if (!fields.includes(key)) return `${section}.${key} 不是可配置字段`;
+      const v = obj[key];
+      if (Array.isArray(v)) return `${section}.${key} 不能是数组`;
+      if (typeof v !== 'number' && typeof v !== 'string') return `${section}.${key} 必须是数字`;
+      if (typeof v === 'string' && !/^\s*-?\d+(\.\d+)?\s*$/.test(v)) {
+        return `${section}.${key} 必须是数字`;
+      }
+      if (!Number.isFinite(Number(v))) return `${section}.${key} 必须是有效数字`;
+    }
+  }
+  return null;
+}
 
 // 深合并：以 base 为底，只覆盖 raw 中出现的字段（PATCH 语义，R21）
 function mergeConfig(raw, base = DEFAULT_CONFIG) {
   const cfg = JSON.parse(JSON.stringify(base || DEFAULT_CONFIG));
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return cfg;
 
+  // G2：数组、对象、布尔等非数字值一律回退，Number([0.8]) 不再被当成 0.8
   const pickNumber = (obj, key, fallback) => {
-    const v = Number(obj && obj[key]);
-    return Number.isFinite(v) ? v : fallback;
+    const v = obj && obj[key];
+    if (Array.isArray(v)) return fallback;
+    if (typeof v !== 'number' && typeof v !== 'string') return fallback;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
   };
 
   if (raw.weights && typeof raw.weights === 'object') {
@@ -64,7 +103,8 @@ function mergeConfig(raw, base = DEFAULT_CONFIG) {
 
 // 校验配置合法性，返回 null 表示通过，否则返回错误说明
 function validateConfig(raw, base = DEFAULT_CONFIG) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '配置格式不正确';
+  const shapeError = shapeProblem(raw);
+  if (shapeError) return shapeError;
 
   const cfg = mergeConfig(raw, base);
 

@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../config/db');
-const { asyncHandler } = require('../utils/response');
+const { asyncHandler, fail } = require('../utils/response');
 const { toRates, limitsFromSnapshot } = require('../utils/portrait');
 const { getPortraitConfig, configVersion } = require('../utils/portraitConfig');
 const { csvCell, genderLabel, maskContact } = require('../utils/fields');
@@ -30,7 +30,10 @@ function buildConditions(query, alias = 's') {
   if (query.major) { conds.push(`${alias}.major = ?`); params.push(query.major); }
   if (query.grade !== undefined && query.grade !== '') {
     const g = Number(query.grade);
-    if (Number.isInteger(g)) { conds.push(`${alias}.grade = ?`); params.push(g); }
+    // G3：非法年级直接报错，不能静默忽略后返回全量数据
+    if (!Number.isInteger(g)) return { error: '年级参数必须是整数' };
+    conds.push(`${alias}.grade = ?`);
+    params.push(g);
   }
 
   return { sql: conds.length ? ' AND ' + conds.join(' AND ') : '', params };
@@ -51,7 +54,8 @@ function sendCsv(res, filename, csv) {
 
 // 导出学生列表：按当前筛选条件导出，教师仅本专业且联系方式脱敏
 router.get('/students', asyncHandler(async (req, res) => {
-  const { sql: cond, params } = buildConditions(req.query);
+  const { sql: cond, params, error } = buildConditions(req.query);
+  if (error) return fail(res, 400, 400, error);
   const majors = await teacherScope(req.user);
 
   let where = ' WHERE 1=1' + cond;
@@ -86,7 +90,8 @@ router.get('/students', asyncHandler(async (req, res) => {
 
 // 导出画像报告：使用当前配置换算得分率，并注明配置版本（R12）
 router.get('/portraits', asyncHandler(async (req, res) => {
-  const { sql: cond, params } = buildConditions(req.query);
+  const { sql: cond, params, error } = buildConditions(req.query);
+  if (error) return fail(res, 400, 400, error);
   const majors = await teacherScope(req.user);
 
   let where = ' WHERE 1=1' + cond;

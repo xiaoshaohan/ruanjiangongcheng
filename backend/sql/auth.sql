@@ -1,5 +1,5 @@
 -- 系统用户表（登录鉴权 + 角色权限）
-USE student_portrait;
+-- 库名由 mysql -D 参数指定，例如：mysql -uroot -p -D student_portrait < 本文件.sql
 
 CREATE TABLE IF NOT EXISTS sys_user (
     id            INT AUTO_INCREMENT PRIMARY KEY,

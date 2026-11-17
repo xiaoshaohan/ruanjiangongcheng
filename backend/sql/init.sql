@@ -1,6 +1,8 @@
 -- 高校学生成长与职业发展数据中台 - 数据库初始化
-CREATE DATABASE IF NOT EXISTS student_portrait DEFAULT CHARACTER SET utf8mb4;
-USE student_portrait;
+-- 先手工建库再执行本文件：
+--   CREATE DATABASE IF NOT EXISTS <你的库名> DEFAULT CHARACTER SET utf8mb4;
+-- 然后用 mysql 的 -D 参数指定同一个库名执行本文件
+-- 库名由 mysql -D 参数指定，例如：mysql -uroot -p -D student_portrait < 本文件.sql
 
 -- 学生表
 CREATE TABLE IF NOT EXISTS student (

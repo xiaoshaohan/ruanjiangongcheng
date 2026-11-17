@@ -67,7 +67,12 @@ router.get('/', authRequired, adminOnly, asyncHandler(async (req, res) => {
      GROUP BY t.teacher_no, t.name, t.college, t.title, t.status, u.username
      ORDER BY t.teacher_no`
   );
-  ok(res, rows.map((r) => ({ ...r, status: Number(r.status) })));
+  // M2：负责专业统一返回数组，未设置时为空数组而不是 null
+  ok(res, rows.map((r) => ({
+    ...r,
+    majors: r.majors ? String(r.majors).split(',').filter(Boolean) : [],
+    status: Number(r.status),
+  })));
 }));
 
 // 新增 / 更新单个教师
@@ -174,11 +179,13 @@ router.post('/bulk-import', authRequired, adminOnly, asyncHandler(async (req, re
 }));
 
 // 教师查看自己负责的专业与学生
+// S2：返回值必须带 phone/email，否则教师编辑弹窗回填不到原始联系方式，
+// 保存时会把空值提交成 NULL，造成无感知的数据丢失。
 router.get('/my-students', authRequired, roleRequired('teacher', 'admin'), asyncHandler(async (req, res) => {
   const teacherNo = req.user.teacher_no;
   if (req.user.role === 'admin') {
     const [students] = await pool.query(
-      'SELECT student_id, name, gender, college, major, grade FROM student ORDER BY student_id'
+      'SELECT student_id, name, gender, college, major, grade, phone, email FROM student ORDER BY student_id'
     );
     return ok(res, { majors: [], students, scope: 'all' }, '管理员视图：全部学生');
   }
@@ -191,7 +198,7 @@ router.get('/my-students', authRequired, roleRequired('teacher', 'admin'), async
   }
 
   const [students] = await pool.query(
-    `SELECT student_id, name, gender, college, major, grade
+    `SELECT student_id, name, gender, college, major, grade, phone, email
      FROM student WHERE major IN (?) ORDER BY student_id`,
     [majorList]
   );
