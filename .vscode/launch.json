@@ -7,7 +7,7 @@
       "name": "启动后端服务 (app.js)",
       "program": "${workspaceFolder}/backend/app.js",
       "cwd": "${workspaceFolder}/backend",
-      "console": "integratedTerminal",
+      "console": "internalConsole",
       "restart": true,
       "skipFiles": ["<node_internals>/**"]
     },

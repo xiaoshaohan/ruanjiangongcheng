@@ -130,6 +130,14 @@ ruanjiangongcheng2/
 
    看到“数据库连接成功”后打开 <http://localhost:3000>。首次启动且用户表为空时会创建实验账号 `admin / admin123`。
 
+6. 在 VS Code 里调试（可选）：
+
+   仓库已带 `.vscode/launch.json`，打开项目后按 `F5` 选"启动后端服务 (app.js)"即可，断点、重启（`restart: true`）都可用。
+
+   - 运行输出在**调试控制台**（`console: internalConsole`）。若改回 `integratedTerminal` 而终端起不来、报"无法启动 conpty"，是 VS Code 1.109 移除 winpty 后的本机终端问题：在用户 `settings.json` 加 `"terminal.integrated.windowsUseConptyDll": true`，或继续用 `internalConsole`。
+   - 用 `F5` 前先确认 3000 端口没被别的进程占用（`Get-NetTCPConnection -LocalPort 3000 -State Listen`），否则调试会秒退。
+   - VS Code 若提示"未找到 Git"，在用户 `settings.json` 配 `"git.path": "你的 git.exe 路径"`。
+
 > 本原型仅用于课程实验，不要直接暴露到公网，也不要存真实学生数据。
 
 ## 角色与账号
